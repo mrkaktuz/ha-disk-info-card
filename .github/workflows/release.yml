@@ -1,0 +1,25 @@
+# Після git push origin v0.x.y автоматично створює GitHub Release для цього тега.
+# Якщо реліз уже створено вручну — крок пропускається (skipIfReleaseExists).
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          generateReleaseNotes: true
+          skipIfReleaseExists: true
