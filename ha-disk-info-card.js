@@ -283,14 +283,18 @@ const DISK_INFO_CONFIG_FORM = {
     if (!Array.isArray(m)) return;
     for (let i = 0; i < m.length; i++) {
       const row = m[i];
-      if (!row?.title || !String(row.title).trim()) {
-        throw new Error(`Характеристика ${i + 1}: вкажіть заголовок`);
-      }
-      if (!row?.icon || !String(row.icon).trim()) {
-        throw new Error(`Характеристика ${i + 1}: вкажіть іконку`);
-      }
+      if (!row || typeof row !== 'object') continue;
+      const title = row.title && String(row.title).trim();
+      const icon = row.icon && String(row.icon).trim();
       const ent = row.entity && String(row.entity).trim();
       const tpl = row.value_template && String(row.value_template).trim();
+      if (!title && !icon && !ent && !tpl) continue;
+      if (!title) {
+        throw new Error(`Характеристика ${i + 1}: вкажіть заголовок`);
+      }
+      if (!icon) {
+        throw new Error(`Характеристика ${i + 1}: вкажіть іконку`);
+      }
       if (!ent && !tpl) {
         throw new Error(`Характеристика ${i + 1}: потрібна сутність або шаблон значення`);
       }
@@ -319,7 +323,37 @@ class HaDiskInfoCard extends HTMLElement {
     this._activeValueTextEl = null;
     this._activeValueUnitEl = null;
     this._activeValueBtnEl = null;
+    /** Очікує hui-card (grid / panel) — без цього у новіших HA можливі помилки layout */
+    this._layout = undefined;
+    this._preview = false;
     this.attachShadow({ mode: 'open' });
+  }
+
+  get layout() {
+    return this._layout;
+  }
+
+  set layout(v) {
+    this._layout = v;
+  }
+
+  get preview() {
+    return this._preview;
+  }
+
+  set preview(v) {
+    this._preview = !!v;
+  }
+
+  /** Grid-секції Lovelace викликають через hui-card; без методу — нестабільне прев’ю. */
+  getGridOptions() {
+    return {
+      columns: 12,
+      min_columns: 6,
+      rows: 'auto',
+      min_rows: 4,
+      max_rows: 16,
+    };
   }
 
   static getStubConfig() {
