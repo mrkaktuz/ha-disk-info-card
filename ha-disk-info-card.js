@@ -594,7 +594,8 @@ class HaDiskInfoCard extends HTMLElement {
         entityId = cfg.temperature_entity;
         entityName = cfg.temperature_name ?? 'Темп.';
         lineColor = cfg.graphLineColors.temperature;
-        graphType = cfg.temperatureGraphType ?? 'line';
+        graphType = (cfg.temperatureGraphType ?? 'line').toString().toLowerCase();
+        graphType = graphType === 'bar' || graphType === 'line' ? graphType : 'line';
         break;
       case 'usedPercent':
         entityId = cfg.percent_entity;
