@@ -74,7 +74,7 @@ smartStateMap:
 - клік по `SMART` перемикає графік на `smart_entity`
 - клік по `Напрацювання` перемикає графік на `uptime_hours_entity`
 
-Також, якщо `openHistoryOnClick: true`, клік відкриває сторінку history для відповідної сутності.
+Також, якщо `openHistoryOnClick: true`, клік відкриває стандартний More Info модальний діалог для відповідної сутності (з історією/графіком всередині). За поведінку відповідає `historyClickMode` (за замовчуванням `more-info`).
 
 ## Параметри (коротко)
 
@@ -94,5 +94,6 @@ smartStateMap:
 - `totalUnit`
 - `smartPassStrings`, `smartStateMap`
 - `openHistoryOnClick` (default `true`)
-- `historyPath` (default `/history`)
+- `historyClickMode` (`more-info` або `history-page`, default `more-info`)
+- `historyPath` (default `/history`, використовується лише коли `historyClickMode: history-page`)
 

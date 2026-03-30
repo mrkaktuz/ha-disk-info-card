@@ -12,6 +12,15 @@ const DEFAULTS = {
   barWidthPx: 44,
   // In "auto height" mode this should be left as 0.
   barMinHeightPx: 0,
+
+  // Active header typography
+  activeValueFontWeight: 700,
+  temperatureValueFontWeight: 400,
+
+  // Auto-scroll for metric values under the graph
+  metricAutoScroll: true,
+  metricAutoScrollPxPerSecond: 40,
+
   barColors: [
     // Same semantics as bar-card: [ {to, color}, ... ] with ranges:
     // 0..yellowFrom => green, yellowFrom..redFrom => yellow, redFrom..100 => red
@@ -55,6 +64,9 @@ const DEFAULTS = {
   // UI/UX
   openHistoryOnClick: true,
   historyPath: '/history',
+  // "more-info" opens HA standard More Info modal with history/graphs inside.
+  // "history-page" navigates to /history (legacy behavior).
+  historyClickMode: 'more-info',
 
   // Fill zones (used %)
   zoneGreenTo: 79,
@@ -76,6 +88,13 @@ const DEFAULTS = {
   metricPrimaryFontSize: 13,
   metricSecondaryFontSize: 12,
 };
+
+const CARD_BASE_URL = (() => {
+  // Capture base URL once at load-time so we can fetch translations later.
+  const src = document.currentScript?.src;
+  if (!src) return '';
+  return src.replace(/ha-disk-info-card\.js.*$/, '');
+})();
 
 function escapeHtml(text) {
   return (text ?? '')
@@ -173,6 +192,27 @@ class HaDiskInfoCard extends HTMLElement {
     this._config = null;
     this._activeGraphKey = 'temperature';
     this._graphEl = null;
+
+    this._i18n = null;
+    this._i18nLang = null;
+    this._i18nPromise = null;
+
+    this._activeValueBtnEl = null;
+
+    // Metric values: outer clip containers + inner animated spans.
+    this._usedPrimaryOuterEl = null;
+    this._smartPrimaryOuterEl = null;
+    this._uptimePrimaryOuterEl = null;
+    this._usedSecondaryOuterEl = null;
+    this._smartSecondaryOuterEl = null;
+    this._uptimeSecondaryOuterEl = null;
+
+    this._usedPrimaryInnerEl = null;
+    this._smartPrimaryInnerEl = null;
+    this._uptimePrimaryInnerEl = null;
+    this._usedSecondaryInnerEl = null;
+    this._smartSecondaryInnerEl = null;
+    this._uptimeSecondaryInnerEl = null;
 
     this.attachShadow({ mode: 'open' });
   }
@@ -275,7 +315,7 @@ class HaDiskInfoCard extends HTMLElement {
 
       .barWrap {
         min-height: ${cfg.barMinHeightPx}px;
-        height: auto;
+        height: 100%;
         align-self: stretch;
         position: relative;
         border-radius: 10px;
@@ -342,14 +382,29 @@ class HaDiskInfoCard extends HTMLElement {
 
       .activeValueText {
         font-size: 22px;
-        font-weight: 700;
         white-space: nowrap;
+      }
+
+      .activeValueNumber {
+        font-weight: ${cfg.activeValueFontWeight};
+        white-space: nowrap;
+      }
+
+      .activeValueBtn[data-active-graph="temperature"] .activeValueNumber {
+        font-weight: ${cfg.temperatureValueFontWeight};
       }
 
       .activeValueUnit {
         font-size: 12px;
         opacity: 0.7;
         white-space: nowrap;
+        margin-left: 4px;
+        vertical-align: text-top;
+        display: inline-block;
+      }
+
+      .activeValueUnit:empty {
+        display: none;
       }
 
       .graph {
@@ -396,29 +451,36 @@ class HaDiskInfoCard extends HTMLElement {
         font-size: ${cfg.metricPrimaryFontSize}px;
         font-weight: 600;
         white-space: nowrap;
-        overflow-x: auto;
-        overflow-y: hidden;
-        scrollbar-width: none;
-        -ms-overflow-style: none;
+        overflow: hidden;
         display: block;
         max-width: 100%;
-      }
-      .metricPrimary::-webkit-scrollbar {
-        display: none;
       }
       .metricSecondary {
         font-size: ${cfg.metricSecondaryFontSize}px;
         opacity: 0.65;
         white-space: nowrap;
-        overflow-x: auto;
-        overflow-y: hidden;
-        scrollbar-width: none;
-        -ms-overflow-style: none;
+        overflow: hidden;
         display: block;
         max-width: 100%;
       }
-      .metricSecondary::-webkit-scrollbar {
-        display: none;
+
+      .metricScrollInner {
+        display: inline-block;
+        white-space: nowrap;
+        transform: translateX(0);
+      }
+
+      .metricScrollInner[data-marquee="true"] {
+        animation: marquee var(--scroll-duration, 10s) linear infinite alternate;
+      }
+
+      @keyframes marquee {
+        from {
+          transform: translateX(0);
+        }
+        to {
+          transform: translateX(calc(-1 * var(--scroll-distance, 0px)));
+        }
       }
     `;
 
@@ -440,9 +502,11 @@ class HaDiskInfoCard extends HTMLElement {
           <div class="content">
             <div class="graphHeader">
               <div class="title">${escapeHtml(cfg.title)}</div>
-              <button class="activeValueBtn" id="active-value-btn" type="button">
-                <div class="activeValueText" id="active-value-text">—</div>
-                <div class="activeValueUnit" id="active-value-unit"></div>
+              <button class="activeValueBtn" id="active-value-btn" type="button" data-active-graph="${this._activeGraphKey}">
+                <div class="activeValueText">
+                  <span class="activeValueNumber" id="active-value-text">—</span>
+                  <span class="activeValueUnit" id="active-value-unit"></span>
+                </div>
               </button>
             </div>
             <div class="graph" id="${graphHostId}"></div>
@@ -450,22 +514,34 @@ class HaDiskInfoCard extends HTMLElement {
               <button class="metricBtn" data-metric="used" aria-pressed="false">
                 <ha-icon class="metricIcon" id="icon-used" icon="${escapeHtml(cfg.icons.used)}"></ha-icon>
                 <div class="metricText">
-                  <div class="metricPrimary" id="text-used-primary">—</div>
-                  <div class="metricSecondary" id="text-used-secondary"></div>
+                  <div class="metricPrimary" id="text-used-primary">
+                    <span class="metricScrollInner" id="text-used-primary-inner">—</span>
+                  </div>
+                  <div class="metricSecondary" id="text-used-secondary">
+                    <span class="metricScrollInner" id="text-used-secondary-inner"></span>
+                  </div>
                 </div>
               </button>
               <button class="metricBtn" data-metric="smart" aria-pressed="false">
                 <ha-icon class="metricIcon" id="icon-smart" icon="${escapeHtml(cfg.icons.smart)}"></ha-icon>
                 <div class="metricText">
-                  <div class="metricPrimary" id="text-smart-primary">—</div>
-                  <div class="metricSecondary" id="text-smart-secondary"></div>
+                  <div class="metricPrimary" id="text-smart-primary">
+                    <span class="metricScrollInner" id="text-smart-primary-inner">—</span>
+                  </div>
+                  <div class="metricSecondary" id="text-smart-secondary">
+                    <span class="metricScrollInner" id="text-smart-secondary-inner"></span>
+                  </div>
                 </div>
               </button>
               <button class="metricBtn" data-metric="uptime" aria-pressed="false">
                 <ha-icon class="metricIcon" id="icon-uptime" icon="${escapeHtml(cfg.icons.uptime)}"></ha-icon>
                 <div class="metricText">
-                  <div class="metricPrimary" id="text-uptime-primary">—</div>
-                  <div class="metricSecondary" id="text-uptime-secondary"></div>
+                  <div class="metricPrimary" id="text-uptime-primary">
+                    <span class="metricScrollInner" id="text-uptime-primary-inner">—</span>
+                  </div>
+                  <div class="metricSecondary" id="text-uptime-secondary">
+                    <span class="metricScrollInner" id="text-uptime-secondary-inner"></span>
+                  </div>
                 </div>
               </button>
             </div>
@@ -483,16 +559,25 @@ class HaDiskInfoCard extends HTMLElement {
     this._fillRedEl = this.shadowRoot.getElementById('fill-red');
     this._barPctEl = this.shadowRoot.getElementById('bar-pct');
 
-    this._usedPrimaryEl = this.shadowRoot.getElementById('text-used-primary');
-    this._smartPrimaryEl = this.shadowRoot.getElementById('text-smart-primary');
-    this._uptimePrimaryEl = this.shadowRoot.getElementById('text-uptime-primary');
+    this._usedPrimaryOuterEl = this.shadowRoot.getElementById('text-used-primary');
+    this._smartPrimaryOuterEl = this.shadowRoot.getElementById('text-smart-primary');
+    this._uptimePrimaryOuterEl = this.shadowRoot.getElementById('text-uptime-primary');
 
-    this._usedSecondaryEl = this.shadowRoot.getElementById('text-used-secondary');
-    this._smartSecondaryEl = this.shadowRoot.getElementById('text-smart-secondary');
-    this._uptimeSecondaryEl = this.shadowRoot.getElementById('text-uptime-secondary');
+    this._usedSecondaryOuterEl = this.shadowRoot.getElementById('text-used-secondary');
+    this._smartSecondaryOuterEl = this.shadowRoot.getElementById('text-smart-secondary');
+    this._uptimeSecondaryOuterEl = this.shadowRoot.getElementById('text-uptime-secondary');
+
+    this._usedPrimaryInnerEl = this.shadowRoot.getElementById('text-used-primary-inner');
+    this._smartPrimaryInnerEl = this.shadowRoot.getElementById('text-smart-primary-inner');
+    this._uptimePrimaryInnerEl = this.shadowRoot.getElementById('text-uptime-primary-inner');
+
+    this._usedSecondaryInnerEl = this.shadowRoot.getElementById('text-used-secondary-inner');
+    this._smartSecondaryInnerEl = this.shadowRoot.getElementById('text-smart-secondary-inner');
+    this._uptimeSecondaryInnerEl = this.shadowRoot.getElementById('text-uptime-secondary-inner');
 
     this._activeValueTextEl = this.shadowRoot.getElementById('active-value-text');
     this._activeValueUnitEl = this.shadowRoot.getElementById('active-value-unit');
+    this._activeValueBtnEl = this.shadowRoot.getElementById('active-value-btn');
 
     const activeValueBtn = this.shadowRoot.getElementById('active-value-btn');
     if (activeValueBtn) {
@@ -532,7 +617,7 @@ class HaDiskInfoCard extends HTMLElement {
       btn.setAttribute('aria-pressed', pressed ? 'true' : 'false');
     });
 
-    // Optionally open the entity history page.
+    // Optionally open entity modal (with graph in More Info).
     if (this._config?.openHistoryOnClick) {
       const cfg = this._config;
       let entityId = null;
@@ -540,14 +625,13 @@ class HaDiskInfoCard extends HTMLElement {
       if (metricKey === 'smart') entityId = cfg.smart_entity;
       if (metricKey === 'uptime') entityId = cfg.uptime_hours_entity;
       if (entityId) {
-        const base = cfg.historyPath ?? '/history';
-        const url = `${base}?entity_id=${encodeURIComponent(entityId)}`;
-        window.location.href = url;
-        return; // navigation will happen
+        this._openEntityWithGraphModal(entityId);
       }
     }
 
     this._updateGraphConfig();
+    // Header value depends on active graph key.
+    this._updateValues();
   }
 
   _openHistoryForGraphKey(graphKey) {
@@ -561,9 +645,94 @@ class HaDiskInfoCard extends HTMLElement {
     if (graphKey === 'uptimeHours') entityId = cfg.uptime_hours_entity;
 
     if (!entityId) return;
-    const base = cfg.historyPath ?? '/history';
-    const url = `${base}?entity_id=${encodeURIComponent(entityId)}`;
-    window.location.href = url;
+    this._openEntityWithGraphModal(entityId);
+  }
+
+  _openEntityWithGraphModal(entityId) {
+    if (!entityId || !this._config?.openHistoryOnClick) return;
+
+    const mode = this._config?.historyClickMode ?? 'more-info';
+    if (mode === 'history-page') {
+      const base = this._config.historyPath ?? '/history';
+      const url = `${base}?entity_id=${encodeURIComponent(entityId)}`;
+      window.location.href = url;
+      return;
+    }
+
+    // Standard Home Assistant More Info modal.
+    this.dispatchEvent(
+      new CustomEvent('hass-more-info', {
+        bubbles: true,
+        composed: true,
+        detail: { entityId },
+      })
+    );
+  }
+
+  _maybeEnsureI18n(uiLang) {
+    if (!uiLang) uiLang = 'en';
+    const langToLoad = uiLang === 'uk' ? 'uk' : 'en';
+    if (this._i18n && this._i18nLang === langToLoad) return;
+    if (this._i18nPromise) return;
+
+    this._i18nPromise = (async () => {
+      try {
+        const base = CARD_BASE_URL || '';
+        const url = `${base}translations/${langToLoad}.json`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`i18n fetch failed: ${res.status}`);
+        const json = await res.json();
+        this._i18n = json ?? {};
+        this._i18nLang = langToLoad;
+      } catch (e) {
+        // Silent fallback to inline defaults.
+        this._i18n = null;
+        this._i18nLang = null;
+      } finally {
+        this._i18nPromise = null;
+        // Re-render translated labels ASAP.
+        this._updateValues();
+      }
+    })();
+  }
+
+  _maybeStartMarquee(outerEl, innerEl) {
+    if (!outerEl || !innerEl) return;
+
+    if (!this._config?.metricAutoScroll) {
+      innerEl.removeAttribute('data-marquee');
+      innerEl.style.animation = 'none';
+      innerEl.style.transform = 'translateX(0)';
+      return;
+    }
+
+    const outerWidth = outerEl.clientWidth;
+    const innerWidth = innerEl.scrollWidth;
+    const distance = Math.max(0, innerWidth - outerWidth);
+
+    if (distance < 1) {
+      innerEl.removeAttribute('data-marquee');
+      innerEl.style.animation = 'none';
+      innerEl.style.transform = 'translateX(0)';
+      return;
+    }
+
+    innerEl.setAttribute('data-marquee', 'true');
+    innerEl.style.setProperty('--scroll-distance', `${distance}px`);
+
+    const pxPerSecond = this._config?.metricAutoScrollPxPerSecond ?? 40;
+    const duration = Math.max(6, distance / pxPerSecond);
+    innerEl.style.setProperty('--scroll-duration', `${duration}s`);
+  }
+
+  _updateMetricMarquee() {
+    this._maybeStartMarquee(this._usedPrimaryOuterEl, this._usedPrimaryInnerEl);
+    this._maybeStartMarquee(this._smartPrimaryOuterEl, this._smartPrimaryInnerEl);
+    this._maybeStartMarquee(this._uptimePrimaryOuterEl, this._uptimePrimaryInnerEl);
+
+    this._maybeStartMarquee(this._usedSecondaryOuterEl, this._usedSecondaryInnerEl);
+    this._maybeStartMarquee(this._smartSecondaryOuterEl, this._smartSecondaryInnerEl);
+    this._maybeStartMarquee(this._uptimeSecondaryOuterEl, this._uptimeSecondaryInnerEl);
   }
 
   _ensureGraphElement() {
@@ -669,7 +838,9 @@ class HaDiskInfoCard extends HTMLElement {
     if (this._graphEl) this._graphEl.hass = this._hass;
 
     const uiLang = detectUiLang(this._hass);
-    const i18n = getI18n(uiLang);
+    this._maybeEnsureI18n(uiLang);
+    const langToUse = uiLang === 'uk' ? 'uk' : 'en';
+    const i18n = this._i18n && this._i18nLang === langToUse ? this._i18n : getI18n(uiLang);
 
     const percent = this._getNumberState(cfg.percent_entity);
     const total = this._getNumberState(cfg.total_entity);
@@ -737,24 +908,24 @@ class HaDiskInfoCard extends HTMLElement {
     }
 
     // Used / total text
-    if (this._usedPrimaryEl) {
+    if (this._usedPrimaryInnerEl) {
       const usedText = computeUsedText(total, p, cfg.totalUnit);
-      this._usedPrimaryEl.textContent = usedText;
+      this._usedPrimaryInnerEl.textContent = usedText;
     }
 
     // SMART parse
     const smartNorm = (smartRaw ?? '').toString().toLowerCase().trim();
     const passed = (cfg.smartPassStrings ?? []).some((s) => smartNorm.includes(s.toLowerCase()));
-    if (this._smartPrimaryEl) {
-      this._smartPrimaryEl.textContent = passed ? i18n.passed : i18n.failed;
+    if (this._smartPrimaryInnerEl) {
+      this._smartPrimaryInnerEl.textContent = passed ? i18n.passed : i18n.failed;
     }
     if (this._iconSmartEl) {
       this._iconSmartEl.style.color = passed ? '#4caf50' : '#e53935';
     }
 
     // Uptime formatting
-    if (this._uptimePrimaryEl) {
-      this._uptimePrimaryEl.textContent = formatUptimeHours(
+    if (this._uptimePrimaryInnerEl) {
+      this._uptimePrimaryInnerEl.textContent = formatUptimeHours(
         uptimeH,
         cfg.uptimeHoursPerYear,
         cfg.uptimeHoursPerDay
@@ -762,9 +933,9 @@ class HaDiskInfoCard extends HTMLElement {
     }
 
     // Metric labels (secondary text)
-    if (this._usedSecondaryEl) this._usedSecondaryEl.textContent = i18n.usedTotal;
-    if (this._smartSecondaryEl) this._smartSecondaryEl.textContent = i18n.smart;
-    if (this._uptimeSecondaryEl) this._uptimeSecondaryEl.textContent = i18n.uptime;
+    if (this._usedSecondaryInnerEl) this._usedSecondaryInnerEl.textContent = i18n.usedTotal;
+    if (this._smartSecondaryInnerEl) this._smartSecondaryInnerEl.textContent = i18n.smart;
+    if (this._uptimeSecondaryInnerEl) this._uptimeSecondaryInnerEl.textContent = i18n.uptime;
 
     // Active header value (temperature / used% / SMART / uptime)
     const tempStateObj = this._hass.states[cfg.temperature_entity];
@@ -788,8 +959,13 @@ class HaDiskInfoCard extends HTMLElement {
       activeText = formatUptimeHours(uptimeH, cfg.uptimeHoursPerYear, cfg.uptimeHoursPerDay);
     }
 
+    if (this._activeValueBtnEl) this._activeValueBtnEl.dataset.activeGraph = this._activeGraphKey;
+
     if (this._activeValueTextEl) this._activeValueTextEl.textContent = activeText;
     if (this._activeValueUnitEl) this._activeValueUnitEl.textContent = activeUnit;
+
+    // Start marquee if values don't fit.
+    this._updateMetricMarquee();
   }
 }
 
@@ -840,6 +1016,12 @@ class HaDiskInfoCardEditor extends HTMLElement {
       </div>
 
       <div class="grid2">
+        <ha-textfield id="temperatureValueFontWeight" label="temperature_value_font_weight (e.g. 500)"></ha-textfield>
+        <ha-switch id="metricAutoScroll" style="margin-top: 6px;"></ha-switch>
+      </div>
+      <div class="hint">Auto-scroll long metric texts (primary/secondary) under the graph.</div>
+
+      <div class="grid2">
         <ha-textfield id="zoneGreenTo" label="zone_green_to (green <=)"></ha-textfield>
         <ha-textfield id="zoneYellowTo" label="zone_yellow_to (yellow <=)"></ha-textfield>
       </div>
@@ -867,7 +1049,7 @@ class HaDiskInfoCardEditor extends HTMLElement {
 
       <div class="row">
         <ha-switch id="openHistoryOnClick" style="margin-top: 6px;"></ha-switch>
-        <div class="hint">Open entity history page when clicking metrics.</div>
+        <div class="hint">Open HA standard More Info modal (with history/graph) when clicking metrics.</div>
       </div>
     `;
 
@@ -885,6 +1067,8 @@ class HaDiskInfoCardEditor extends HTMLElement {
       graphFontSize: this.shadowRoot.getElementById('graphFontSize'),
       barWidthPx: this.shadowRoot.getElementById('barWidthPx'),
       temperatureGraphType: this.shadowRoot.getElementById('temperatureGraphType'),
+      temperatureValueFontWeight: this.shadowRoot.getElementById('temperatureValueFontWeight'),
+      metricAutoScroll: this.shadowRoot.getElementById('metricAutoScroll'),
       zoneGreenTo: this.shadowRoot.getElementById('zoneGreenTo'),
       zoneYellowTo: this.shadowRoot.getElementById('zoneYellowTo'),
       zoneGreenColor: this.shadowRoot.getElementById('zoneGreenColor'),
@@ -933,6 +1117,7 @@ class HaDiskInfoCardEditor extends HTMLElement {
     bindNum(this._els.graphHeight, 'graphHeight');
     bindNum(this._els.graphFontSize, 'graphFontSize');
     bindNum(this._els.barWidthPx, 'barWidthPx');
+    bindNum(this._els.temperatureValueFontWeight, 'temperatureValueFontWeight');
     bindNum(this._els.zoneGreenTo, 'zoneGreenTo');
     bindNum(this._els.zoneYellowTo, 'zoneYellowTo');
 
@@ -948,6 +1133,7 @@ class HaDiskInfoCardEditor extends HTMLElement {
       el.addEventListener('value-changed', handler);
     };
     bindSwitch(this._els.showExtrema, 'showExtrema');
+    bindSwitch(this._els.metricAutoScroll, 'metricAutoScroll');
 
     this._els.smartPassStrings.addEventListener('value-changed', (ev) => {
       const raw = (ev.detail?.value ?? ev.target?.value ?? '').toString();
@@ -1014,6 +1200,8 @@ class HaDiskInfoCardEditor extends HTMLElement {
     this._els.graphFontSize.value = this._config.graphFontSize ?? 65;
     this._els.barWidthPx.value = this._config.barWidthPx ?? 44;
     this._els.temperatureGraphType.value = this._config.temperatureGraphType ?? DEFAULTS.temperatureGraphType;
+    this._els.temperatureValueFontWeight.value =
+      this._config.temperatureValueFontWeight ?? DEFAULTS.temperatureValueFontWeight;
 
     this._els.zoneGreenTo.value = this._config.zoneGreenTo ?? DEFAULTS.zoneGreenTo;
     this._els.zoneYellowTo.value = this._config.zoneYellowTo ?? DEFAULTS.zoneYellowTo;
@@ -1024,6 +1212,7 @@ class HaDiskInfoCardEditor extends HTMLElement {
 
     this._els.smartPassStrings.value = (this._config.smartPassStrings ?? DEFAULTS.smartPassStrings).join(', ');
     this._els.openHistoryOnClick.checked = this._config.openHistoryOnClick ?? DEFAULTS.openHistoryOnClick;
+    this._els.metricAutoScroll.checked = this._config.metricAutoScroll ?? DEFAULTS.metricAutoScroll;
   }
 
   _emitConfig() {
