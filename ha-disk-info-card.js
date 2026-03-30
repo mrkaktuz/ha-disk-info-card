@@ -10,7 +10,8 @@ const DEFAULTS = {
   subtitle: '',
   percentDecimals: 1,
   barWidthPx: 44,
-  barMinHeightPx: 180,
+  // In "auto height" mode this should be left as 0.
+  barMinHeightPx: 0,
   barColors: [
     // Same semantics as bar-card: [ {to, color}, ... ] with ranges:
     // 0..yellowFrom => green, yellowFrom..redFrom => yellow, redFrom..100 => red
@@ -67,6 +68,9 @@ const DEFAULTS = {
   // Graph options
   showExtrema: true,
   showSubtitle: false,
+
+  // Temperature graph type: "line" or "bar"
+  temperatureGraphType: 'line',
 
   // Metrics typography
   metricPrimaryFontSize: 13,
@@ -134,6 +138,32 @@ function computeSeverityColor(percent, barColors) {
   if (p <= yellowTo) return yellow;
   if (p >= redFrom) return red;
   return yellow;
+}
+
+function detectUiLang(hass) {
+  const lang = (hass?.language ?? '').toString().toLowerCase();
+  if (lang.startsWith('uk')) return 'uk';
+  return 'en';
+}
+
+function getI18n(lang) {
+  const uk = {
+    usedTotal: 'Заповнено / всього',
+    smart: 'SMART',
+    uptime: 'Напрацювання',
+    passed: 'Пройдений',
+    failed: 'Помилка',
+    historyOpen: 'Відкрити історію',
+  };
+  const en = {
+    usedTotal: 'Used / total',
+    smart: 'SMART',
+    uptime: 'Uptime',
+    passed: 'Passed',
+    failed: 'Failed',
+    historyOpen: 'Open history',
+  };
+  return lang === 'uk' ? uk : en;
 }
 
 class HaDiskInfoCard extends HTMLElement {
@@ -244,7 +274,9 @@ class HaDiskInfoCard extends HTMLElement {
       }
 
       .barWrap {
-        height: ${cfg.barMinHeightPx}px;
+        min-height: ${cfg.barMinHeightPx}px;
+        height: auto;
+        align-self: stretch;
         position: relative;
         border-radius: 10px;
         overflow: hidden;
@@ -289,9 +321,35 @@ class HaDiskInfoCard extends HTMLElement {
 
       .graphHeader {
         display: flex;
-        flex-direction: column;
-        gap: 2px;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 10px;
         margin-bottom: -2px;
+      }
+
+      .activeValueBtn {
+        appearance: none;
+        border: none;
+        background: transparent;
+        padding: 0;
+        margin: 0;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 2px;
+      }
+
+      .activeValueText {
+        font-size: 22px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .activeValueUnit {
+        font-size: 12px;
+        opacity: 0.7;
+        white-space: nowrap;
       }
 
       .graph {
@@ -337,20 +395,30 @@ class HaDiskInfoCard extends HTMLElement {
       .metricPrimary {
         font-size: ${cfg.metricPrimaryFontSize}px;
         font-weight: 600;
-        white-space: normal;
-        overflow: hidden;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
+        white-space: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        display: block;
+        max-width: 100%;
+      }
+      .metricPrimary::-webkit-scrollbar {
+        display: none;
       }
       .metricSecondary {
         font-size: ${cfg.metricSecondaryFontSize}px;
         opacity: 0.65;
-        white-space: normal;
-        overflow: hidden;
-        display: -webkit-box;
-        -webkit-line-clamp: 1;
-        -webkit-box-orient: vertical;
+        white-space: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        display: block;
+        max-width: 100%;
+      }
+      .metricSecondary::-webkit-scrollbar {
+        display: none;
       }
     `;
 
@@ -372,7 +440,10 @@ class HaDiskInfoCard extends HTMLElement {
           <div class="content">
             <div class="graphHeader">
               <div class="title">${escapeHtml(cfg.title)}</div>
-              ${cfg.showSubtitle && cfg.subtitle ? `<div class="subtitle">${escapeHtml(cfg.subtitle)}</div>` : ''}
+              <button class="activeValueBtn" id="active-value-btn" type="button">
+                <div class="activeValueText" id="active-value-text">—</div>
+                <div class="activeValueUnit" id="active-value-unit"></div>
+              </button>
             </div>
             <div class="graph" id="${graphHostId}"></div>
             <div class="metrics">
@@ -380,21 +451,21 @@ class HaDiskInfoCard extends HTMLElement {
                 <ha-icon class="metricIcon" id="icon-used" icon="${escapeHtml(cfg.icons.used)}"></ha-icon>
                 <div class="metricText">
                   <div class="metricPrimary" id="text-used-primary">—</div>
-                  <div class="metricSecondary" id="text-used-secondary">Зайнято / всього</div>
+                  <div class="metricSecondary" id="text-used-secondary"></div>
                 </div>
               </button>
               <button class="metricBtn" data-metric="smart" aria-pressed="false">
                 <ha-icon class="metricIcon" id="icon-smart" icon="${escapeHtml(cfg.icons.smart)}"></ha-icon>
                 <div class="metricText">
                   <div class="metricPrimary" id="text-smart-primary">—</div>
-                  <div class="metricSecondary" id="text-smart-secondary">SMART</div>
+                  <div class="metricSecondary" id="text-smart-secondary"></div>
                 </div>
               </button>
               <button class="metricBtn" data-metric="uptime" aria-pressed="false">
                 <ha-icon class="metricIcon" id="icon-uptime" icon="${escapeHtml(cfg.icons.uptime)}"></ha-icon>
                 <div class="metricText">
                   <div class="metricPrimary" id="text-uptime-primary">—</div>
-                  <div class="metricSecondary" id="text-uptime-secondary">Напрацювання</div>
+                  <div class="metricSecondary" id="text-uptime-secondary"></div>
                 </div>
               </button>
             </div>
@@ -415,6 +486,21 @@ class HaDiskInfoCard extends HTMLElement {
     this._usedPrimaryEl = this.shadowRoot.getElementById('text-used-primary');
     this._smartPrimaryEl = this.shadowRoot.getElementById('text-smart-primary');
     this._uptimePrimaryEl = this.shadowRoot.getElementById('text-uptime-primary');
+
+    this._usedSecondaryEl = this.shadowRoot.getElementById('text-used-secondary');
+    this._smartSecondaryEl = this.shadowRoot.getElementById('text-smart-secondary');
+    this._uptimeSecondaryEl = this.shadowRoot.getElementById('text-uptime-secondary');
+
+    this._activeValueTextEl = this.shadowRoot.getElementById('active-value-text');
+    this._activeValueUnitEl = this.shadowRoot.getElementById('active-value-unit');
+
+    const activeValueBtn = this.shadowRoot.getElementById('active-value-btn');
+    if (activeValueBtn) {
+      activeValueBtn.addEventListener('click', () => {
+        const key = this._activeGraphKey;
+        this._openHistoryForGraphKey(key);
+      });
+    }
 
     this._iconSmartEl = this.shadowRoot.getElementById('icon-smart');
 
@@ -464,6 +550,22 @@ class HaDiskInfoCard extends HTMLElement {
     this._updateGraphConfig();
   }
 
+  _openHistoryForGraphKey(graphKey) {
+    if (!this._config?.openHistoryOnClick) return;
+    const cfg = this._config;
+
+    let entityId = null;
+    if (graphKey === 'temperature') entityId = cfg.temperature_entity;
+    if (graphKey === 'usedPercent') entityId = cfg.percent_entity;
+    if (graphKey === 'smart') entityId = cfg.smart_entity;
+    if (graphKey === 'uptimeHours') entityId = cfg.uptime_hours_entity;
+
+    if (!entityId) return;
+    const base = cfg.historyPath ?? '/history';
+    const url = `${base}?entity_id=${encodeURIComponent(entityId)}`;
+    window.location.href = url;
+  }
+
   _ensureGraphElement() {
     if (this._graphEl) return;
     if (!customElements.get('mini-graph-card')) return;
@@ -485,12 +587,14 @@ class HaDiskInfoCard extends HTMLElement {
     let entityName = '';
     let stateMap = undefined;
     let lineColor = cfg.graphLineColors.temperature;
+    let graphType = 'line';
 
     switch (this._activeGraphKey) {
       case 'temperature':
         entityId = cfg.temperature_entity;
         entityName = cfg.temperature_name ?? 'Темп.';
         lineColor = cfg.graphLineColors.temperature;
+        graphType = cfg.temperatureGraphType ?? 'line';
         break;
       case 'usedPercent':
         entityId = cfg.percent_entity;
@@ -534,14 +638,14 @@ class HaDiskInfoCard extends HTMLElement {
       line_color: lineColor,
       group: true,
       show: {
-        graph: 'line',
+        graph: graphType,
         fill: 'fade',
-        points: 'hover',
+        points: graphType === 'bar' ? false : 'hover',
         extrema: !!cfg.showExtrema,
         legend: false,
         icon: false,
         name: false,
-        state: true,
+        state: false,
         labels: false,
       },
     };
@@ -563,8 +667,12 @@ class HaDiskInfoCard extends HTMLElement {
     // Ensure nested mini-graph-card receives hass updates.
     if (this._graphEl) this._graphEl.hass = this._hass;
 
+    const uiLang = detectUiLang(this._hass);
+    const i18n = getI18n(uiLang);
+
     const percent = this._getNumberState(cfg.percent_entity);
     const total = this._getNumberState(cfg.total_entity);
+    const temperature = this._getNumberState(cfg.temperature_entity);
     const smartRaw = this._getState(cfg.smart_entity);
     const uptimeH = this._getNumberState(cfg.uptime_hours_entity);
 
@@ -637,7 +745,7 @@ class HaDiskInfoCard extends HTMLElement {
     const smartNorm = (smartRaw ?? '').toString().toLowerCase().trim();
     const passed = (cfg.smartPassStrings ?? []).some((s) => smartNorm.includes(s.toLowerCase()));
     if (this._smartPrimaryEl) {
-      this._smartPrimaryEl.textContent = passed ? cfg.smartPassLabel : cfg.smartFailLabel;
+      this._smartPrimaryEl.textContent = passed ? i18n.passed : i18n.failed;
     }
     if (this._iconSmartEl) {
       this._iconSmartEl.style.color = passed ? '#4caf50' : '#e53935';
@@ -651,6 +759,36 @@ class HaDiskInfoCard extends HTMLElement {
         cfg.uptimeHoursPerDay
       );
     }
+
+    // Metric labels (secondary text)
+    if (this._usedSecondaryEl) this._usedSecondaryEl.textContent = i18n.usedTotal;
+    if (this._smartSecondaryEl) this._smartSecondaryEl.textContent = i18n.smart;
+    if (this._uptimeSecondaryEl) this._uptimeSecondaryEl.textContent = i18n.uptime;
+
+    // Active header value (temperature / used% / SMART / uptime)
+    const tempStateObj = this._hass.states[cfg.temperature_entity];
+    const tempUnit = tempStateObj?.attributes?.unit_of_measurement ?? '°C';
+
+    let activeText = '—';
+    let activeUnit = '';
+
+    if (this._activeGraphKey === 'temperature') {
+      if (temperature !== null && Number.isFinite(temperature)) {
+        const fixed = Math.abs(temperature) >= 100 ? temperature.toFixed(0) : temperature.toFixed(1);
+        activeText = fixed.replace(/\.0$/, '');
+      }
+      activeUnit = tempUnit;
+    } else if (this._activeGraphKey === 'usedPercent') {
+      activeText = (p ?? 0).toFixed(cfg.percentDecimals);
+      activeUnit = '%';
+    } else if (this._activeGraphKey === 'smart') {
+      activeText = passed ? i18n.passed : i18n.failed;
+    } else if (this._activeGraphKey === 'uptimeHours') {
+      activeText = formatUptimeHours(uptimeH, cfg.uptimeHoursPerYear, cfg.uptimeHoursPerDay);
+    }
+
+    if (this._activeValueTextEl) this._activeValueTextEl.textContent = activeText;
+    if (this._activeValueUnitEl) this._activeValueUnitEl.textContent = activeUnit;
   }
 }
 
@@ -674,13 +812,7 @@ class HaDiskInfoCardEditor extends HTMLElement {
       </style>
       <div class="row">
         <ha-textfield id="title" label="Title"></ha-textfield>
-        <ha-textfield id="subtitle" label="Subtitle"></ha-textfield>
         <ha-textfield id="totalUnit" label="Total unit (e.g. GB)"></ha-textfield>
-      </div>
-
-      <div class="row">
-        <ha-switch id="showSubtitle" style="margin-top: 6px;"></ha-switch>
-        <div class="hint">Show subtitle under title</div>
       </div>
 
       <div class="row">
@@ -703,12 +835,21 @@ class HaDiskInfoCardEditor extends HTMLElement {
 
       <div class="grid2">
         <ha-textfield id="barWidthPx" label="bar width (px)"></ha-textfield>
-        <ha-textfield id="barMinHeightPx" label="bar min height (px)"></ha-textfield>
+        <ha-textfield id="temperatureGraphType" label="temperature_graph_type (line/bar)"></ha-textfield>
       </div>
 
       <div class="grid2">
         <ha-textfield id="zoneGreenTo" label="zone_green_to (green <=)"></ha-textfield>
         <ha-textfield id="zoneYellowTo" label="zone_yellow_to (yellow <=)"></ha-textfield>
+      </div>
+
+      <div class="grid2">
+        <ha-textfield id="zoneGreenColor" label="zone_green_color (#RRGGBB)"></ha-textfield>
+        <ha-textfield id="zoneYellowColor" label="zone_yellow_color (#RRGGBB)"></ha-textfield>
+      </div>
+
+      <div class="row">
+        <ha-textfield id="zoneRedColor" label="zone_red_color (#RRGGBB)"></ha-textfield>
       </div>
 
       <div class="row">
@@ -731,8 +872,6 @@ class HaDiskInfoCardEditor extends HTMLElement {
 
     this._els = {
       title: this.shadowRoot.getElementById('title'),
-      subtitle: this.shadowRoot.getElementById('subtitle'),
-      showSubtitle: this.shadowRoot.getElementById('showSubtitle'),
       totalUnit: this.shadowRoot.getElementById('totalUnit'),
       percentEntity: this.shadowRoot.getElementById('percentEntity'),
       totalEntity: this.shadowRoot.getElementById('totalEntity'),
@@ -744,16 +883,19 @@ class HaDiskInfoCardEditor extends HTMLElement {
       graphHeight: this.shadowRoot.getElementById('graphHeight'),
       graphFontSize: this.shadowRoot.getElementById('graphFontSize'),
       barWidthPx: this.shadowRoot.getElementById('barWidthPx'),
-      barMinHeightPx: this.shadowRoot.getElementById('barMinHeightPx'),
+      temperatureGraphType: this.shadowRoot.getElementById('temperatureGraphType'),
       zoneGreenTo: this.shadowRoot.getElementById('zoneGreenTo'),
       zoneYellowTo: this.shadowRoot.getElementById('zoneYellowTo'),
+      zoneGreenColor: this.shadowRoot.getElementById('zoneGreenColor'),
+      zoneYellowColor: this.shadowRoot.getElementById('zoneYellowColor'),
+      zoneRedColor: this.shadowRoot.getElementById('zoneRedColor'),
       showExtrema: this.shadowRoot.getElementById('showExtrema'),
       smartPassStrings: this.shadowRoot.getElementById('smartPassStrings'),
       openHistoryOnClick: this.shadowRoot.getElementById('openHistoryOnClick'),
     };
 
     const textChanged = (key, parser) => (ev) => {
-      const val = ev.target.value;
+      const val = ev.detail?.value ?? ev.target?.value;
       this._config = this._config ?? {};
       this._config = { ...this._config, [key]: parser ? parser(val) : val };
       this._emitConfig();
@@ -762,13 +904,19 @@ class HaDiskInfoCardEditor extends HTMLElement {
     // ha-textfield can emit either `value-changed` or `change` depending on HA version.
     this._els.title.addEventListener('value-changed', textChanged('title'));
     this._els.title.addEventListener('change', textChanged('title'));
-    this._els.subtitle.addEventListener('value-changed', textChanged('subtitle'));
-    this._els.subtitle.addEventListener('change', textChanged('subtitle'));
     this._els.totalUnit.addEventListener('value-changed', textChanged('totalUnit'));
     this._els.totalUnit.addEventListener('change', textChanged('totalUnit'));
+    this._els.temperatureGraphType.addEventListener('value-changed', textChanged('temperatureGraphType'));
+    this._els.temperatureGraphType.addEventListener('change', textChanged('temperatureGraphType'));
+    this._els.zoneGreenColor.addEventListener('value-changed', textChanged('zoneGreenColor'));
+    this._els.zoneGreenColor.addEventListener('change', textChanged('zoneGreenColor'));
+    this._els.zoneYellowColor.addEventListener('value-changed', textChanged('zoneYellowColor'));
+    this._els.zoneYellowColor.addEventListener('change', textChanged('zoneYellowColor'));
+    this._els.zoneRedColor.addEventListener('value-changed', textChanged('zoneRedColor'));
+    this._els.zoneRedColor.addEventListener('change', textChanged('zoneRedColor'));
 
     const numChanged = (key) => (ev) => {
-      const v = ev.target.value;
+      const v = ev.detail?.value ?? ev.target?.value;
       const n = v === '' ? null : Number(v);
       this._config = { ...this._config, [key]: Number.isFinite(n) ? n : v };
       this._emitConfig();
@@ -784,7 +932,6 @@ class HaDiskInfoCardEditor extends HTMLElement {
     bindNum(this._els.graphHeight, 'graphHeight');
     bindNum(this._els.graphFontSize, 'graphFontSize');
     bindNum(this._els.barWidthPx, 'barWidthPx');
-    bindNum(this._els.barMinHeightPx, 'barMinHeightPx');
     bindNum(this._els.zoneGreenTo, 'zoneGreenTo');
     bindNum(this._els.zoneYellowTo, 'zoneYellowTo');
 
@@ -799,11 +946,10 @@ class HaDiskInfoCardEditor extends HTMLElement {
       el.addEventListener('change', handler);
       el.addEventListener('value-changed', handler);
     };
-    bindSwitch(this._els.showSubtitle, 'showSubtitle');
     bindSwitch(this._els.showExtrema, 'showExtrema');
 
     this._els.smartPassStrings.addEventListener('value-changed', (ev) => {
-      const raw = (ev.target.value ?? '').toString();
+      const raw = (ev.detail?.value ?? ev.target?.value ?? '').toString();
       const arr = raw
         .split(',')
         .map((s) => s.trim())
@@ -853,8 +999,6 @@ class HaDiskInfoCardEditor extends HTMLElement {
     this._config = { ...config };
 
     this._els.title.value = this._config.title ?? '';
-    this._els.subtitle.value = this._config.subtitle ?? '';
-    this._els.showSubtitle.checked = this._config.showSubtitle ?? DEFAULTS.showSubtitle;
     this._els.totalUnit.value = this._config.totalUnit ?? 'GB';
 
     this._els.percentEntity.value = this._config.percent_entity ?? '';
@@ -868,10 +1012,13 @@ class HaDiskInfoCardEditor extends HTMLElement {
     this._els.graphHeight.value = this._config.graphHeight ?? 60;
     this._els.graphFontSize.value = this._config.graphFontSize ?? 65;
     this._els.barWidthPx.value = this._config.barWidthPx ?? 44;
-    this._els.barMinHeightPx.value = this._config.barMinHeightPx ?? 180;
+    this._els.temperatureGraphType.value = this._config.temperatureGraphType ?? DEFAULTS.temperatureGraphType;
 
     this._els.zoneGreenTo.value = this._config.zoneGreenTo ?? DEFAULTS.zoneGreenTo;
     this._els.zoneYellowTo.value = this._config.zoneYellowTo ?? DEFAULTS.zoneYellowTo;
+    this._els.zoneGreenColor.value = this._config.zoneGreenColor ?? DEFAULTS.zoneGreenColor;
+    this._els.zoneYellowColor.value = this._config.zoneYellowColor ?? DEFAULTS.zoneYellowColor;
+    this._els.zoneRedColor.value = this._config.zoneRedColor ?? DEFAULTS.zoneRedColor;
     this._els.showExtrema.checked = this._config.showExtrema ?? DEFAULTS.showExtrema;
 
     this._els.smartPassStrings.value = (this._config.smartPassStrings ?? DEFAULTS.smartPassStrings).join(', ');
@@ -897,7 +1044,7 @@ customElements.define('ha-disk-info', HaDiskInfoCard);
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: 'ha-disk-info',
-  name: 'Disk info card',
+  name: 'Disk Info Card',
   description: 'Universal disk info card (bar + temperature chart + SMART + uptime).',
 });
 

@@ -4,6 +4,7 @@
 
 - вертикальна смуга заповнення (used %)
 - temperature графік (через `custom:mini-graph-card`, якщо доступний)
+- тип графіка температури (`temperatureGraphType`: `line` або `bar`)
 - SMART статус
 - напрацювання (uptime в годинах з форматуванням років/днів/годин)
 - клік по 3 показниках під графіком перемикає графік на відповідну сутність
@@ -79,14 +80,17 @@ smartStateMap:
 
 Нижче найбільш корисні (є і інші, але це базові):
 
-- `title`, `subtitle`
+- `title`
 - `percent_entity`, `total_entity`
 - `temperature_entity`
 - `smart_entity`
 - `uptime_hours_entity`
 - `graphHeight`, `graphFontSize`
 - `hoursToShow`, `pointsPerHour`
-- `barWidthPx`, `barMinHeightPx`
+- `barWidthPx`
+- `temperatureGraphType` (`line`/`bar`)
+- `zoneGreenTo`, `zoneYellowTo` (пороги заповнення)
+- `zoneGreenColor`, `zoneYellowColor`, `zoneRedColor` (кольори зон)
 - `totalUnit`
 - `smartPassStrings`, `smartStateMap`
 - `openHistoryOnClick` (default `true`)

@@ -1,5 +1,5 @@
 {
-  "name": "HA Disk Info Card",
+  "name": "Disk Info Card",
   "render_readme": true,
   "filename": "ha-disk-info-card.js",
   "content_in_root": true
