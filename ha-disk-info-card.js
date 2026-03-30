@@ -293,6 +293,15 @@ class HaDiskInfoCard extends HTMLElement {
     const cfg = this._config;
     const graphHostId = 'graph-host';
 
+    const tempStrokePx = (() => {
+      const w = Number(cfg.temperatureValueFontWeight ?? DEFAULTS.temperatureValueFontWeight);
+      if (w <= 300) return 0;
+      if (w <= 400) return 0.06;
+      if (w <= 500) return 0.16;
+      if (w <= 600) return 0.26;
+      return 0.36;
+    })();
+
     const style = `
       :host { display: block; }
       .card {
@@ -326,6 +335,7 @@ class HaDiskInfoCard extends HTMLElement {
         border-radius: 10px;
         overflow: hidden;
         background: rgba(120, 120, 120, 0.12);
+        cursor: pointer;
       }
 
       .barZoneBg {
@@ -397,6 +407,8 @@ class HaDiskInfoCard extends HTMLElement {
       .activeValueNumber {
         font-weight: ${cfg.activeValueFontWeight};
         white-space: nowrap;
+        -webkit-text-stroke: ${tempStrokePx}px currentColor;
+        paint-order: stroke fill;
       }
 
       .activeValueBtn[data-active-graph="temperature"] .activeValueNumber {
@@ -419,6 +431,8 @@ class HaDiskInfoCard extends HTMLElement {
 
       .graph {
         width: 100%;
+        overflow: visible;
+        padding-bottom: 2px;
       }
 
       .metrics {
@@ -436,7 +450,7 @@ class HaDiskInfoCard extends HTMLElement {
         min-width: 0;
         cursor: pointer;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 10px;
         width: 100%;
       }
@@ -457,6 +471,8 @@ class HaDiskInfoCard extends HTMLElement {
         flex-direction: column;
         gap: 2px;
         min-width: 0;
+        flex: 1;
+        align-items: flex-start;
       }
       .metricPrimary {
         font-size: ${cfg.metricPrimaryFontSize}px;
@@ -601,6 +617,15 @@ class HaDiskInfoCard extends HTMLElement {
       activeValueBtn.addEventListener('click', () => {
         const key = this._activeGraphKey;
         this._openHistoryForGraphKey(key);
+      });
+    }
+
+    // Click on bar opens percent entity More Info modal (without changing temperature chart).
+    if (this._barWrapEl) {
+      this._barWrapEl.addEventListener('click', () => {
+        if (!this._config?.openHistoryOnClick) return;
+        const entityId = this._config.percent_entity;
+        if (entityId) this._openEntityWithGraphModal(entityId);
       });
     }
 
@@ -830,7 +855,7 @@ class HaDiskInfoCard extends HTMLElement {
       hours_to_show: cfg.hoursToShow,
       points_per_hour: cfg.pointsPerHour,
       hour24: cfg.hour24,
-      height: cfg.graphHeight,
+      height: cfg.graphHeight + (cfg.showExtrema ? 14 : 0),
       font_size: cfg.graphFontSize,
       line_color: lineColor,
       group: true,
@@ -991,8 +1016,7 @@ class HaDiskInfoCard extends HTMLElement {
     if (this._activeValueTextEl) this._activeValueTextEl.textContent = activeText;
     if (this._activeValueUnitEl) this._activeValueUnitEl.textContent = activeUnit;
 
-    // Start marquee if values don't fit.
-    this._updateMetricMarquee();
+    // Characteristic values are stacked vertically now, so scrolling isn't needed.
   }
 }
 
@@ -1017,11 +1041,17 @@ class HaDiskInfoCardEditor extends HTMLElement {
         select {
           width: 100%;
           padding: 10px 10px;
-          border: 1px solid rgba(120,120,120,0.18);
+          border: 1px solid var(--divider-color, rgba(120,120,120,0.18));
           border-radius: 12px;
-          background: rgba(120,120,120,0.06);
+          background: var(--card-background-color, rgba(120,120,120,0.06));
           color: var(--primary-text-color, inherit);
+          font: inherit;
+          outline: none;
           box-sizing: border-box;
+        }
+        option {
+          background: var(--card-background-color, rgba(120,120,120,0.06));
+          color: var(--primary-text-color, inherit);
         }
         ha-textfield, ha-entity-picker { width: 100%; }
       </style>
@@ -1070,9 +1100,7 @@ class HaDiskInfoCardEditor extends HTMLElement {
             <option value="700">Жирна</option>
           </select>
         </div>
-        <ha-switch id="metricAutoScroll" style="margin-top: 6px;"></ha-switch>
       </div>
-      <div class="hint">Прокрутка довгих значень (якщо не вмістилось).</div>
 
       <div class="grid2">
         <ha-textfield id="zoneGreenTo" label="Поріг зеленої зони (≤)"></ha-textfield>
@@ -1121,7 +1149,6 @@ class HaDiskInfoCardEditor extends HTMLElement {
       barWidthPx: this.shadowRoot.getElementById('barWidthPx'),
       temperatureGraphType: this.shadowRoot.getElementById('temperatureGraphType'),
       temperatureValueFontWeight: this.shadowRoot.getElementById('temperatureValueFontWeight'),
-      metricAutoScroll: this.shadowRoot.getElementById('metricAutoScroll'),
       zoneGreenTo: this.shadowRoot.getElementById('zoneGreenTo'),
       zoneYellowTo: this.shadowRoot.getElementById('zoneYellowTo'),
       zoneGreenColor: this.shadowRoot.getElementById('zoneGreenColor'),
@@ -1186,7 +1213,6 @@ class HaDiskInfoCardEditor extends HTMLElement {
       el.addEventListener('value-changed', handler);
     };
     bindSwitch(this._els.showExtrema, 'showExtrema');
-    bindSwitch(this._els.metricAutoScroll, 'metricAutoScroll');
 
     this._els.smartPassStrings.addEventListener('value-changed', (ev) => {
       const raw = (ev.detail?.value ?? ev.target?.value ?? '').toString();
@@ -1265,7 +1291,6 @@ class HaDiskInfoCardEditor extends HTMLElement {
 
     this._els.smartPassStrings.value = (this._config.smartPassStrings ?? DEFAULTS.smartPassStrings).join(', ');
     this._els.openHistoryOnClick.checked = this._config.openHistoryOnClick ?? DEFAULTS.openHistoryOnClick;
-    this._els.metricAutoScroll.checked = this._config.metricAutoScroll ?? DEFAULTS.metricAutoScroll;
   }
 
   _emitConfig() {
