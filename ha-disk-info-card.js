@@ -87,6 +87,8 @@ const DEFAULTS = {
   // Metrics typography
   metricPrimaryFontSize: 13,
   metricSecondaryFontSize: 12,
+  // Optional custom characteristics list.
+  metrics: [],
 };
 
 const CARD_BASE_URL = (() => {
@@ -217,6 +219,7 @@ class HaDiskInfoCard extends HTMLElement {
     this._barWrapEl = null;
     this._contentEl = null;
     this._resizeObserver = null;
+    this._metricsContainerEl = null;
 
     this.attachShadow({ mode: 'open' });
   }
@@ -454,8 +457,8 @@ class HaDiskInfoCard extends HTMLElement {
       }
 
       .metrics {
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 10px;
       }
 
@@ -471,6 +474,7 @@ class HaDiskInfoCard extends HTMLElement {
         align-items: flex-start;
         gap: 10px;
         width: 100%;
+        grid-column: span var(--metric-span, 1);
       }
 
       .metricBtn[aria-pressed="true"] {
@@ -559,41 +563,7 @@ class HaDiskInfoCard extends HTMLElement {
               </button>
             </div>
             <div class="graph" id="${graphHostId}"></div>
-            <div class="metrics">
-              <button class="metricBtn" data-metric="used" aria-pressed="false">
-                <ha-icon class="metricIcon" id="icon-used" icon="${escapeHtml(cfg.icons.used)}"></ha-icon>
-                <div class="metricText">
-                  <div class="metricPrimary" id="text-used-primary">
-                    <span class="metricScrollInner" id="text-used-primary-inner">—</span>
-                  </div>
-                  <div class="metricSecondary" id="text-used-secondary">
-                    <span class="metricScrollInner" id="text-used-secondary-inner"></span>
-                  </div>
-                </div>
-              </button>
-              <button class="metricBtn" data-metric="smart" aria-pressed="false">
-                <ha-icon class="metricIcon" id="icon-smart" icon="${escapeHtml(cfg.icons.smart)}"></ha-icon>
-                <div class="metricText">
-                  <div class="metricPrimary" id="text-smart-primary">
-                    <span class="metricScrollInner" id="text-smart-primary-inner">—</span>
-                  </div>
-                  <div class="metricSecondary" id="text-smart-secondary">
-                    <span class="metricScrollInner" id="text-smart-secondary-inner"></span>
-                  </div>
-                </div>
-              </button>
-              <button class="metricBtn" data-metric="uptime" aria-pressed="false">
-                <ha-icon class="metricIcon" id="icon-uptime" icon="${escapeHtml(cfg.icons.uptime)}"></ha-icon>
-                <div class="metricText">
-                  <div class="metricPrimary" id="text-uptime-primary">
-                    <span class="metricScrollInner" id="text-uptime-primary-inner">—</span>
-                  </div>
-                  <div class="metricSecondary" id="text-uptime-secondary">
-                    <span class="metricScrollInner" id="text-uptime-secondary-inner"></span>
-                  </div>
-                </div>
-              </button>
-            </div>
+            <div class="metrics" id="metrics-container"></div>
           </div>
         </div>
       </div>
@@ -610,21 +580,7 @@ class HaDiskInfoCard extends HTMLElement {
     this._barPctEl = this.shadowRoot.getElementById('bar-pct');
     this._contentEl = this.shadowRoot.getElementById('card-content');
 
-    this._usedPrimaryOuterEl = this.shadowRoot.getElementById('text-used-primary');
-    this._smartPrimaryOuterEl = this.shadowRoot.getElementById('text-smart-primary');
-    this._uptimePrimaryOuterEl = this.shadowRoot.getElementById('text-uptime-primary');
-
-    this._usedSecondaryOuterEl = this.shadowRoot.getElementById('text-used-secondary');
-    this._smartSecondaryOuterEl = this.shadowRoot.getElementById('text-smart-secondary');
-    this._uptimeSecondaryOuterEl = this.shadowRoot.getElementById('text-uptime-secondary');
-
-    this._usedPrimaryInnerEl = this.shadowRoot.getElementById('text-used-primary-inner');
-    this._smartPrimaryInnerEl = this.shadowRoot.getElementById('text-smart-primary-inner');
-    this._uptimePrimaryInnerEl = this.shadowRoot.getElementById('text-uptime-primary-inner');
-
-    this._usedSecondaryInnerEl = this.shadowRoot.getElementById('text-used-secondary-inner');
-    this._smartSecondaryInnerEl = this.shadowRoot.getElementById('text-smart-secondary-inner');
-    this._uptimeSecondaryInnerEl = this.shadowRoot.getElementById('text-uptime-secondary-inner');
+    this._metricsContainerEl = this.shadowRoot.getElementById('metrics-container');
 
     this._activeValueTextEl = this.shadowRoot.getElementById('active-value-text');
     this._activeValueUnitEl = this.shadowRoot.getElementById('active-value-unit');
@@ -649,31 +605,166 @@ class HaDiskInfoCard extends HTMLElement {
 
     this._setupBarHeightObserver();
 
-    this._iconSmartEl = this.shadowRoot.getElementById('icon-smart');
-
     const host = this.shadowRoot.getElementById(graphHostId);
     this._graphHostEl = host;
-
-    // Hook clicks once.
-    this.shadowRoot.querySelectorAll('.metricBtn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const key = btn.getAttribute('data-metric');
-        this._onMetricClick(key);
-      });
-    });
   }
 
-  _onMetricClick(metricKey) {
-    // Always keep the temperature graph as-is; clicks only open a standard HA modal.
-    if (!this._config?.openHistoryOnClick) return;
+  _onMetricClick(entityId) {
+    // Always keep the temperature graph as-is; clicks only open standard HA modal.
+    if (!entityId) return;
+    this._openEntityWithGraphModal(entityId);
+  }
 
+  _getDefaultMetricConfigs(i18n) {
     const cfg = this._config;
-    let entityId = null;
-    if (metricKey === 'used') entityId = cfg.percent_entity;
-    if (metricKey === 'smart') entityId = cfg.smart_entity;
-    if (metricKey === 'uptime') entityId = cfg.uptime_hours_entity;
+    return [
+      {
+        id: 'used',
+        icon: cfg.icons?.used ?? 'mdi:database',
+        name: i18n.usedTotal,
+        entity: cfg.percent_entity,
+        mode: 'used',
+      },
+      {
+        id: 'smart',
+        icon: cfg.icons?.smart ?? 'mdi:check-circle-outline',
+        name: i18n.smart,
+        entity: cfg.smart_entity,
+        mode: 'smart',
+      },
+      {
+        id: 'uptime',
+        icon: cfg.icons?.uptime ?? 'mdi:timer-outline',
+        name: i18n.uptime,
+        entity: cfg.uptime_hours_entity,
+        mode: 'uptime',
+      },
+    ];
+  }
 
-    if (entityId) this._openEntityWithGraphModal(entityId);
+  _getMetricConfigs(i18n) {
+    const cfg = this._config;
+    if (Array.isArray(cfg.metrics) && cfg.metrics.length) return cfg.metrics;
+    return this._getDefaultMetricConfigs(i18n);
+  }
+
+  _evalMetricTemplate(expr, ctx) {
+    if (!expr) return null;
+    const source = expr.toString().trim();
+    if (!source) return null;
+    try {
+      const fn = new Function(
+        'ctx',
+        `
+        const { state, num, percent, total, temperature, smartRaw, uptimeH, clamp } = ctx;
+        return (${source});
+      `
+      );
+      const v = fn(ctx);
+      return v === null || v === undefined ? null : v;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  _pickMetricSpan(primaryText, secondaryText) {
+    const len = `${primaryText ?? ''} ${secondaryText ?? ''}`.trim().length;
+    if (len > 34) return 3;
+    if (len > 18) return 2;
+    return 1;
+  }
+
+  _layoutMetricSpans(items) {
+    const spans = [];
+    let rowFree = 3;
+    for (let i = 0; i < items.length; i++) {
+      let span = Math.max(1, Math.min(3, items[i].span ?? 1));
+      if (span > rowFree) {
+        rowFree = 3;
+      }
+      if (i === items.length - 1 && rowFree === 3 && span === 1) {
+        span = 3;
+      }
+      spans.push(span);
+      rowFree -= span;
+      if (rowFree <= 0) rowFree = 3;
+    }
+    return spans;
+  }
+
+  _renderMetrics(ctx, i18n) {
+    if (!this._metricsContainerEl) return;
+    const cfg = this._config;
+    const metrics = this._getMetricConfigs(i18n);
+
+    const items = metrics.map((m, idx) => {
+      const mode = (m.mode ?? '').toString();
+      const name = (m.name ?? '').toString();
+      const icon = (m.icon ?? 'mdi:information-outline').toString();
+      const entityId = (m.entity ?? '').toString();
+
+      let primary = '—';
+      if (mode === 'used') {
+        primary = computeUsedText(ctx.total, ctx.p, cfg.totalUnit);
+      } else if (mode === 'smart') {
+        primary = ctx.passed ? i18n.passed : i18n.failed;
+      } else if (mode === 'uptime') {
+        primary = formatUptimeHours(ctx.uptimeH, cfg.uptimeHoursPerYear, cfg.uptimeHoursPerDay);
+      } else if (m.value_template) {
+        const v = this._evalMetricTemplate(m.value_template, ctx);
+        primary = v === null ? '—' : v.toString();
+      } else if (entityId) {
+        primary = this._getState(entityId) ?? '—';
+      }
+
+      const secondary = name || m.secondary || '';
+      const span = this._pickMetricSpan(primary, secondary);
+
+      return {
+        id: m.id ?? `metric-${idx}`,
+        icon,
+        primary,
+        secondary,
+        entityId,
+        span,
+      };
+    });
+
+    const spans = this._layoutMetricSpans(items);
+
+    this._metricsContainerEl.innerHTML = items
+      .map((m, idx) => {
+        const smartColor =
+          (m.id === 'smart' || (m.secondary ?? '').toString().toLowerCase() === 'smart') && ctx.passed
+            ? '#4caf50'
+            : null;
+        const smartColorFail =
+          (m.id === 'smart' || (m.secondary ?? '').toString().toLowerCase() === 'smart') && !ctx.passed
+            ? '#e53935'
+            : null;
+        const iconColor = smartColor || smartColorFail || 'var(--primary-text-color)';
+        return `
+          <button class="metricBtn" type="button" data-entity-id="${escapeHtml(
+            m.entityId
+          )}" style="--metric-span:${spans[idx]};">
+            <ha-icon class="metricIcon" icon="${escapeHtml(m.icon)}" style="color:${iconColor};"></ha-icon>
+            <div class="metricText">
+              <div class="metricPrimary"><span class="metricScrollInner">${escapeHtml(m.primary)}</span></div>
+              <div class="metricSecondary"><span class="metricScrollInner">${escapeHtml(
+                m.secondary
+              )}</span></div>
+            </div>
+          </button>
+        `;
+      })
+      .join('');
+
+    this._metricsContainerEl.querySelectorAll('.metricBtn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const entityId = btn.getAttribute('data-entity-id');
+        if (entityId) this._onMetricClick(entityId);
+      });
+    });
   }
 
   _openHistoryForGraphKey(graphKey) {
@@ -977,35 +1068,23 @@ class HaDiskInfoCard extends HTMLElement {
       this._barPctEl.textContent = `${rounded}%`;
     }
 
-    // Used / total text
-    if (this._usedPrimaryInnerEl) {
-      const usedText = computeUsedText(total, p, cfg.totalUnit);
-      this._usedPrimaryInnerEl.textContent = usedText;
-    }
-
     // SMART parse
     const smartNorm = (smartRaw ?? '').toString().toLowerCase().trim();
     const passed = (cfg.smartPassStrings ?? []).some((s) => smartNorm.includes(s.toLowerCase()));
-    if (this._smartPrimaryInnerEl) {
-      this._smartPrimaryInnerEl.textContent = passed ? i18n.passed : i18n.failed;
-    }
-    if (this._iconSmartEl) {
-      this._iconSmartEl.style.color = passed ? '#4caf50' : '#e53935';
-    }
 
-    // Uptime formatting
-    if (this._uptimePrimaryInnerEl) {
-      this._uptimePrimaryInnerEl.textContent = formatUptimeHours(
-        uptimeH,
-        cfg.uptimeHoursPerYear,
-        cfg.uptimeHoursPerDay
-      );
-    }
-
-    // Metric labels (secondary text)
-    if (this._usedSecondaryInnerEl) this._usedSecondaryInnerEl.textContent = i18n.usedTotal;
-    if (this._smartSecondaryInnerEl) this._smartSecondaryInnerEl.textContent = i18n.smart;
-    if (this._uptimeSecondaryInnerEl) this._uptimeSecondaryInnerEl.textContent = i18n.uptime;
+    const ctx = {
+      percent,
+      p,
+      total,
+      temperature,
+      smartRaw,
+      uptimeH,
+      passed,
+      clamp,
+      state: (entityId) => this._getState(entityId),
+      num: (entityId) => this._getNumberState(entityId),
+    };
+    this._renderMetrics(ctx, i18n);
 
     // Active header value (temperature / used% / SMART / uptime)
     const tempStateObj = this._hass.states[cfg.temperature_entity];
@@ -1071,6 +1150,28 @@ class HaDiskInfoCardEditor extends HTMLElement {
           background: var(--card-background-color, rgba(120,120,120,0.06));
           color: var(--primary-text-color, inherit);
         }
+        .metricsEditor {
+          border: 1px solid var(--divider-color, rgba(120,120,120,0.18));
+          border-radius: 12px;
+          padding: 10px;
+          display: grid;
+          gap: 10px;
+        }
+        .metricEditorRow {
+          border: 1px dashed var(--divider-color, rgba(120,120,120,0.18));
+          border-radius: 10px;
+          padding: 8px;
+          display: grid;
+          gap: 8px;
+        }
+        .btn {
+          border: 1px solid var(--divider-color, rgba(120,120,120,0.24));
+          border-radius: 10px;
+          background: var(--card-background-color, rgba(120,120,120,0.06));
+          color: var(--primary-text-color, inherit);
+          padding: 8px 10px;
+          cursor: pointer;
+        }
         ha-textfield, ha-entity-picker { width: 100%; }
       </style>
       <div class="row">
@@ -1084,6 +1185,12 @@ class HaDiskInfoCardEditor extends HTMLElement {
         <ha-entity-picker id="temperatureEntity" label="Сутність температури"></ha-entity-picker>
         <ha-entity-picker id="smartEntity" label="SMART результат (рядок)"></ha-entity-picker>
         <ha-entity-picker id="uptimeEntity" label="Напрацювання (години)"></ha-entity-picker>
+      </div>
+
+      <div class="row">
+        <div class="hint">Характеристики (динамічний список): іконка, назва, сутність, шаблон значення</div>
+        <div class="metricsEditor" id="metrics-editor-list"></div>
+        <button class="btn" id="add-metric-btn" type="button">+ Додати характеристику</button>
       </div>
 
       <div class="grid2">
@@ -1175,7 +1282,23 @@ class HaDiskInfoCardEditor extends HTMLElement {
       showExtrema: this.shadowRoot.getElementById('showExtrema'),
       smartPassStrings: this.shadowRoot.getElementById('smartPassStrings'),
       openHistoryOnClick: this.shadowRoot.getElementById('openHistoryOnClick'),
+      metricsEditorList: this.shadowRoot.getElementById('metrics-editor-list'),
+      addMetricBtn: this.shadowRoot.getElementById('add-metric-btn'),
     };
+
+    this._els.addMetricBtn.addEventListener('click', () => {
+      const metrics = Array.isArray(this._config?.metrics) ? [...this._config.metrics] : [];
+      metrics.push({
+        id: `metric_${Date.now()}`,
+        icon: 'mdi:information-outline',
+        name: 'Нова характеристика',
+        entity: '',
+        value_template: '',
+      });
+      this._config = { ...(this._config ?? {}), metrics };
+      this._renderMetricsEditor();
+      this._emitConfig();
+    });
 
     const textChanged = (key, parser) => (ev) => {
       const val = ev.detail?.value ?? ev.target?.value;
@@ -1269,6 +1392,80 @@ class HaDiskInfoCardEditor extends HTMLElement {
     bindEntity(this._els.uptimeEntity, 'uptime_hours_entity');
   }
 
+  _readMetricsEditor() {
+    const listEl = this._els.metricsEditorList;
+    if (!listEl) return [];
+    return Array.from(listEl.querySelectorAll('.metricEditorRow')).map((row, idx) => ({
+      id: row.getAttribute('data-id') || `metric_${idx}`,
+      icon: row.querySelector('[data-field="icon"]')?.value ?? 'mdi:information-outline',
+      name: row.querySelector('[data-field="name"]')?.value ?? '',
+      entity: row.querySelector('[data-field="entity"]')?.value ?? '',
+      value_template: row.querySelector('[data-field="value_template"]')?.value ?? '',
+    }));
+  }
+
+  _renderMetricsEditor() {
+    const listEl = this._els.metricsEditorList;
+    if (!listEl) return;
+    const metrics = Array.isArray(this._config?.metrics) ? this._config.metrics : [];
+
+    listEl.innerHTML = metrics
+      .map(
+        (m) => `
+      <div class="metricEditorRow" data-id="${escapeHtml(m.id ?? '')}">
+        <div class="grid2">
+          <ha-textfield data-field="name" label="Назва" value="${escapeHtml(m.name ?? '')}"></ha-textfield>
+          <ha-textfield data-field="icon" label="Іконка (mdi:...)" value="${escapeHtml(
+            m.icon ?? 'mdi:information-outline'
+          )}"></ha-textfield>
+        </div>
+        <ha-entity-picker data-field="entity" label="Сутність" value="${escapeHtml(m.entity ?? '')}"></ha-entity-picker>
+        <ha-textfield data-field="value_template" label="Шаблон (JS expression, опційно)" value="${escapeHtml(
+          m.value_template ?? ''
+        )}"></ha-textfield>
+        <button class="btn" type="button" data-remove-metric="1">Видалити</button>
+      </div>
+    `
+      )
+      .join('');
+
+    Array.from(listEl.querySelectorAll('.metricEditorRow')).forEach((row, idx) => {
+      const m = metrics[idx] ?? {};
+      const nameEl = row.querySelector('[data-field="name"]');
+      const iconEl = row.querySelector('[data-field="icon"]');
+      const entityEl = row.querySelector('[data-field="entity"]');
+      const tplEl = row.querySelector('[data-field="value_template"]');
+      if (nameEl) nameEl.value = m.name ?? '';
+      if (iconEl) iconEl.value = m.icon ?? 'mdi:information-outline';
+      if (entityEl) entityEl.value = m.entity ?? '';
+      if (tplEl) tplEl.value = m.value_template ?? '';
+    });
+
+    listEl.querySelectorAll('ha-entity-picker').forEach((el) => {
+      el.hass = this._hass;
+    });
+
+    listEl.querySelectorAll('ha-textfield, ha-entity-picker').forEach((el) => {
+      const onChange = () => {
+        this._config = { ...(this._config ?? {}), metrics: this._readMetricsEditor() };
+        this._emitConfig();
+      };
+      el.addEventListener('value-changed', onChange);
+      el.addEventListener('change', onChange);
+    });
+
+    listEl.querySelectorAll('[data-remove-metric]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const row = btn.closest('.metricEditorRow');
+        const id = row?.getAttribute('data-id');
+        const next = (this._config?.metrics ?? []).filter((m) => (m.id ?? '') !== (id ?? ''));
+        this._config = { ...(this._config ?? {}), metrics: next };
+        this._renderMetricsEditor();
+        this._emitConfig();
+      });
+    });
+  }
+
   set hass(hass) {
     this._hass = hass;
     // Ensure entity pickers receive hass explicitly (more reliable across HA versions).
@@ -1277,10 +1474,14 @@ class HaDiskInfoCardEditor extends HTMLElement {
         el.hass = hass;
       });
     }
+    this._renderMetricsEditor();
   }
 
   setConfig(config) {
     this._config = { ...config };
+    if (!Array.isArray(this._config.metrics)) {
+      this._config.metrics = [];
+    }
 
     this._els.title.value = this._config.title ?? '';
     this._els.totalUnit.value = this._config.totalUnit ?? 'GB';
@@ -1309,6 +1510,7 @@ class HaDiskInfoCardEditor extends HTMLElement {
 
     this._els.smartPassStrings.value = (this._config.smartPassStrings ?? DEFAULTS.smartPassStrings).join(', ');
     this._els.openHistoryOnClick.checked = this._config.openHistoryOnClick ?? DEFAULTS.openHistoryOnClick;
+    this._renderMetricsEditor();
   }
 
   _emitConfig() {
