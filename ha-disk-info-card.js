@@ -637,9 +637,36 @@ class HaDiskInfoCardEditor extends HTMLElement {
     this._config = null;
     /** Щоб не перезаписати metrics порожнім масивом до першого _renderMetricEditors */
     this._metricsEditorRendered = false;
-    /**
-     * Light DOM (без Shadow Root): ha-entity-picker у Shadow DOM у Lovelace часто не рендериться.
-     */
+    /** DOM збираємо в connectedCallback: Lovelace може викликати setConfig до підключення. */
+    this._domReady = false;
+    this._els = null;
+  }
+
+  connectedCallback() {
+    if (this._domReady) return;
+    this._buildEditorDom();
+    this._domReady = true;
+    if (!this._config) {
+      this.setConfig({});
+    } else {
+      this._syncFormFromConfig();
+    }
+    if (this._hass) {
+      this.querySelectorAll('ha-entity-picker').forEach((el) => {
+        el.hass = this._hass;
+      });
+      if (customElements.get('ha-icon-picker')) {
+        this.querySelectorAll('ha-icon-picker').forEach((el) => {
+          el.hass = this._hass;
+        });
+      }
+    }
+  }
+
+  /**
+   * Light DOM (без Shadow Root): ha-entity-picker у Shadow DOM у Lovelace часто не рендериться.
+   */
+  _buildEditorDom() {
     this.innerHTML = `
       <div class="ha-disk-info-card-editor-root">
       <style>
@@ -675,7 +702,7 @@ class HaDiskInfoCardEditor extends HTMLElement {
       <div class="section">
         <div class="sectionTitle">2. Вертикальний бар</div>
         <div class="hint">Сутність відсотка зайнятого місця (0–100). За замовчуванням: sensor.disk_used_space_percent</div>
-        <ha-entity-picker id="hdice-percent" label="Сутність %" required></ha-entity-picker>
+        <ha-entity-picker id="hdice-percent" label="Сутність %"></ha-entity-picker>
         <ha-textfield id="hdice-barWidth" label="Ширина (px)" type="number"></ha-textfield>
         <div class="grid2">
           <ha-textfield id="hdice-zoneGreen" label="Поріг зеленої зони (≤)" type="number"></ha-textfield>
@@ -691,7 +718,7 @@ class HaDiskInfoCardEditor extends HTMLElement {
       <div class="section">
         <div class="sectionTitle">3. Температура та графік</div>
         <div class="hint">Сутність температури. За замовчуванням: sensor.disk_temperature</div>
-        <ha-entity-picker id="hdice-temperature" label="Сутність температури" required></ha-entity-picker>
+        <ha-entity-picker id="hdice-temperature" label="Сутність температури"></ha-entity-picker>
         <div class="grid2">
           <div>
             <div class="hint" style="margin-bottom:6px;">Товщина цифри температури</div>
@@ -827,8 +854,38 @@ class HaDiskInfoCardEditor extends HTMLElement {
     });
   }
 
+  _syncFormFromConfig() {
+    if (!this._els || !this._config) return;
+    const c = this._config;
+    this._metricsEditorRendered = false;
+    this._els.title.value = c.title ?? '';
+    this._els.percentEntity.value = c.percent_entity ?? '';
+    this._els.temperatureEntity.value = c.temperature_entity ?? '';
+    this._els.barWidthPx.value = String(c.barWidthPx ?? DEFAULTS.barWidthPx);
+    this._els.zoneGreenTo.value = String(c.zoneGreenTo ?? DEFAULTS.zoneGreenTo);
+    this._els.zoneYellowTo.value = String(c.zoneYellowTo ?? DEFAULTS.zoneYellowTo);
+    this._els.zoneGreenColor.value = c.zoneGreenColor ?? '';
+    this._els.zoneYellowColor.value = c.zoneYellowColor ?? '';
+    this._els.zoneRedColor.value = c.zoneRedColor ?? '';
+
+    this._els.temperatureThickness.value = c.temperatureThickness ?? 'thin';
+    this._els.temperatureFontSize.value = String(c.temperatureFontSize ?? 65);
+    this._els.hoursToShow.value = String(c.hoursToShow ?? 48);
+    this._els.pointsPerHour.value = String(c.pointsPerHour ?? 3);
+    this._els.graphHeight.value = String(c.graphHeight ?? 60);
+    this._els.temperatureGraphType.value = c.temperatureGraphType ?? 'bar';
+    this._els.showExtrema.value = c.showExtrema !== false ? 'true' : 'false';
+
+    if (this._hass) {
+      this._els.percentEntity.hass = this._hass;
+      this._els.temperatureEntity.hass = this._hass;
+    }
+
+    this._renderMetricEditors();
+  }
+
   _readMetricsFromDom() {
-    const root = this._els.metricsList;
+    const root = this._els?.metricsList;
     if (!root) return this._config?.metrics ?? [];
     if (!this._metricsEditorRendered) return this._config?.metrics ?? [];
     return Array.from(root.querySelectorAll('.metricRow')).map((row, idx) => {
@@ -853,7 +910,8 @@ class HaDiskInfoCardEditor extends HTMLElement {
   }
 
   _renderMetricEditors() {
-    const root = this._els.metricsList;
+    const root = this._els?.metricsList;
+    if (!root) return;
     const metrics = this._config.metrics ?? [];
     const hasIconPicker = !!customElements.get('ha-icon-picker');
 
@@ -923,6 +981,7 @@ class HaDiskInfoCardEditor extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    if (!this._domReady) return;
     this.querySelectorAll('ha-entity-picker').forEach((el) => {
       el.hass = hass;
     });
@@ -934,45 +993,23 @@ class HaDiskInfoCardEditor extends HTMLElement {
   }
 
   setConfig(config) {
-    this._config = {
+    const merged = {
       ...structuredClone(DEFAULTS),
       ...config,
     };
-    if (!Array.isArray(this._config.metrics) || this._config.metrics.length === 0) {
-      this._config.metrics = getDefaultMetrics(
-        this._config.percent_entity || DEFAULT_ENTITY.percent,
-        this._config.total_entity ?? DEFAULT_ENTITY.total
+    if (!Array.isArray(merged.metrics) || merged.metrics.length === 0) {
+      merged.metrics = getDefaultMetrics(
+        merged.percent_entity || DEFAULT_ENTITY.percent,
+        merged.total_entity ?? DEFAULT_ENTITY.total
       );
     }
-
-    this._els.title.value = this._config.title ?? '';
-    this._els.percentEntity.value = this._config.percent_entity ?? '';
-    this._els.temperatureEntity.value = this._config.temperature_entity ?? '';
-    this._els.barWidthPx.value = String(this._config.barWidthPx ?? DEFAULTS.barWidthPx);
-    this._els.zoneGreenTo.value = String(this._config.zoneGreenTo ?? DEFAULTS.zoneGreenTo);
-    this._els.zoneYellowTo.value = String(this._config.zoneYellowTo ?? DEFAULTS.zoneYellowTo);
-    this._els.zoneGreenColor.value = this._config.zoneGreenColor ?? '';
-    this._els.zoneYellowColor.value = this._config.zoneYellowColor ?? '';
-    this._els.zoneRedColor.value = this._config.zoneRedColor ?? '';
-
-    this._els.temperatureThickness.value = this._config.temperatureThickness ?? 'thin';
-    this._els.temperatureFontSize.value = String(this._config.temperatureFontSize ?? 65);
-    this._els.hoursToShow.value = String(this._config.hoursToShow ?? 48);
-    this._els.pointsPerHour.value = String(this._config.pointsPerHour ?? 3);
-    this._els.graphHeight.value = String(this._config.graphHeight ?? 60);
-    this._els.temperatureGraphType.value = this._config.temperatureGraphType ?? 'bar';
-    this._els.showExtrema.value = this._config.showExtrema !== false ? 'true' : 'false';
-
-    if (this._hass) {
-      this._els.percentEntity.hass = this._hass;
-      this._els.temperatureEntity.hass = this._hass;
-    }
-
-    this._renderMetricEditors();
+    this._config = merged;
+    if (!this._domReady) return;
+    this._syncFormFromConfig();
   }
 
   _emitConfig() {
-    if (!this._config) return;
+    if (!this._config || !this._domReady) return;
     const metrics = this._readMetricsFromDom();
     const next = { ...this._config, metrics };
     this._config = next;
