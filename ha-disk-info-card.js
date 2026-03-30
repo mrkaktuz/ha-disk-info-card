@@ -294,12 +294,22 @@ class HaDiskInfoCard extends HTMLElement {
     const graphHostId = 'graph-host';
 
     const tempStrokePx = (() => {
+      // Make thickness differences visually obvious.
       const w = Number(cfg.temperatureValueFontWeight ?? DEFAULTS.temperatureValueFontWeight);
       if (w <= 300) return 0;
-      if (w <= 400) return 0.06;
-      if (w <= 500) return 0.16;
-      if (w <= 600) return 0.26;
-      return 0.36;
+      if (w <= 400) return 0.3;
+      if (w <= 500) return 0.9;
+      if (w <= 600) return 1.6;
+      return 2.3;
+    })();
+
+    const tempShadowPx = (() => {
+      const w = Number(cfg.temperatureValueFontWeight ?? DEFAULTS.temperatureValueFontWeight);
+      if (w <= 300) return 0;
+      if (w <= 400) return 0.4;
+      if (w <= 500) return 1.0;
+      if (w <= 600) return 1.8;
+      return 2.6;
     })();
 
     const style = `
@@ -379,7 +389,7 @@ class HaDiskInfoCard extends HTMLElement {
         justify-content: space-between;
         align-items: flex-end;
         gap: 10px;
-        margin-bottom: -2px;
+        margin-bottom: 0px;
       }
 
       .activeValueBtn {
@@ -409,6 +419,7 @@ class HaDiskInfoCard extends HTMLElement {
         white-space: nowrap;
         -webkit-text-stroke: ${tempStrokePx}px currentColor;
         paint-order: stroke fill;
+        text-shadow: 0 0 ${tempShadowPx}px currentColor;
       }
 
       .activeValueBtn[data-active-graph="temperature"] .activeValueNumber {
@@ -432,7 +443,14 @@ class HaDiskInfoCard extends HTMLElement {
       .graph {
         width: 100%;
         overflow: visible;
-        padding-bottom: 2px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        box-sizing: border-box;
+      }
+
+      mini-graph-card {
+        border-radius: 0 !important;
+        overflow: visible !important;
       }
 
       .metrics {
@@ -855,7 +873,7 @@ class HaDiskInfoCard extends HTMLElement {
       hours_to_show: cfg.hoursToShow,
       points_per_hour: cfg.pointsPerHour,
       hour24: cfg.hour24,
-      height: cfg.graphHeight + (cfg.showExtrema ? 14 : 0),
+      height: cfg.graphHeight + (cfg.showExtrema ? 24 : 0),
       font_size: cfg.graphFontSize,
       line_color: lineColor,
       group: true,
