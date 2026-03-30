@@ -1,100 +1,95 @@
 # HA Disk Info Card
 
-Універсальна кастомна Lovelace-картка для відображення інформації про диск:
-
-- вертикальна смуга заповнення (used %)
-- temperature графік (через `custom:mini-graph-card`, якщо доступний)
-- тип графіка температури (`temperatureGraphType`: `line` або `bar`)
-- SMART статус
-- напрацювання (uptime в годинах з форматуванням років/днів/годин)
-- клік по показниках відкриває стандартну More Info модалку відповідної сутності
-- кастомні характеристики: довільна кількість, іконка/назва/сутність, опціональний `value_template`
+Кастомна Lovelace-картка для диска: вертикальна смуга заповнення (%), показ температури з міні-графіком (`custom:mini-graph-card`) та блок настроюваних характеристик (сутність або шаблон). Клік по смузі, температурі або характеристиці відкриває стандартну модалку Home Assistant (More info) з історією для відповідної сутності.
 
 ## Вимоги
 
-Картка намагається використовувати `custom:mini-graph-card` для графіка температури. Якщо `mini-graph-card` недоступний, картка все одно відобразиться (бар + SMART + напрацювання), але графік може не показуватись.
+- **custom:mini-graph-card** — для графіка температури. Без нього картка відобразить бар і метрики, але графік може бути недоступний.
 
 ## Встановлення (HACS)
 
-Якщо ви встановлюєте через HACS, достатньо завантажити репозиторій і переконатися, що в корені є `hacs.json`.
+Репозиторій з `hacs.json` у корені; після встановлення додайте ресурс і картку `custom:ha-disk-info`.
 
-## Конфігурація
+## Налаштування в UI
 
-Початковий формат:
+Редактор розбитий на блоки:
+
+1. **Заголовок** — текст (за замовчуванням «Диск»).
+2. **Вертикальний бар** — сутність відсотка зайнятого місця (0–100), ширина, пороги зон і кольори.
+3. **Температура та графік** — сутність температури, товщина цифри, розмір шрифту, години/точки, висота графіка, тип (стовпчики/лінія), min/max.
+4. **Характеристики** — список метрик: сутність або JS-шаблон значення, заголовок, іконка (`ha-icon-picker`, якщо є), розмірність, окрема сутність для графіка в модалці.
+
+За замовчуванням підставляються типові імена сутностей (`sensor.disk_used_space_percent`, `sensor.disk_temperature`, `sensor.disk_total`); якщо сутність з таким id є в системі, вона використовується, інакше виконується спроба знайти схожу за суфіксом/ключовими словами.
+
+## Приклад YAML
+
+Мінімальний варіант (решта — дефолти з картки):
 
 ```yaml
 type: custom:ha-disk-info
-title: "Системний диск (nvme0)"
-subtitle: "NVMe"
-
-percent_entity: sensor.home_server_disk
-total_entity: sensor.home_server_disk_total
-
-temperature_entity: sensor.home_server_built_in_nvme0_temperature
-smart_entity: sensor.home_server_built_in_nvme0_smart_test_result
-uptime_hours_entity: sensor.home_server_built_in_nvme0_power_on_hours
-
-# додатково (опційно)
-totalUnit: "GB"
-graphHeight: 60
-graphFontSize: 60
-hoursToShow: 24
-pointsPerHour: 4
-barWidthPx: 44
-barMinHeightPx: 180
 ```
 
-### Як обчислюються значення
-
-- `percent_entity` — це **used %** (0..100). Для заповнення смуги і для обчислення тексту `used / total`.
-- `total_entity` — загальна ємність в одиницях `totalUnit` (наприклад, GB).
-- `uptime_hours_entity` — напрацювання в **годинах**.
-- `smart_entity` — рядковий результат SMART (наприклад `Passed`, `Failed`).
-
-### SMART: passed/failed
-
-За замовчуванням використовується список `smartPassStrings`: `["passed", "pass", "ok"]`.
-Клік по SMART викликає відображення історії цієї сутності; для нечісливих станів можна задати `smartStateMap`.
-
-Приклад:
+Повний приклад з перевизначеннями:
 
 ```yaml
-smartPassStrings: ["passed"]
-smartStateMap:
-  - value: "passed"
-    label: "Passed"
-  - value: "failed"
-    label: "Failed"
+type: custom:ha-disk-info
+title: "Системний диск"
+
+percent_entity: sensor.my_disk_used_space_percent
+temperature_entity: sensor.my_disk_temperature
+total_entity: sensor.my_disk_total
+
+barWidthPx: 55
+zoneGreenTo: 79
+zoneYellowTo: 89
+zoneGreenColor: "#27ae60"
+zoneYellowColor: "#f39c12"
+zoneRedColor: "#c0392b"
+
+temperatureThickness: thin
+temperatureFontSize: 65
+hoursToShow: 48
+pointsPerHour: 3
+graphHeight: 60
+temperatureGraphType: bar
+showExtrema: true
+
+metrics:
+  - id: total
+    title: Всього
+    icon: mdi:harddisk
+    entity: sensor.my_disk_total
+    value_template: ""
+    unit: Гб
+    graph_entity: ""
+  - id: used
+    title: Зайнято
+    icon: mdi:chart-pie
+    entity: ""
+    value_template: (num('sensor.my_disk_used_space_percent') * num('sensor.my_disk_total')) / 100
+    unit: Гб
+    graph_entity: sensor.my_disk_used_space_percent
 ```
 
-## Події (кліки)
+### Шаблон значення (`value_template`)
 
-За замовчуванням:
+Вираз JavaScript з контекстом `ctx`: функції `num(id)`, `state(id)`, `clamp`; також поля `percent_entity`, `total_entity`, `temperature_entity` (рядки entity id після резолву на картці).
 
-- клік по характеристиці відкриває More Info модалку для її сутності
-- клік по лівому бару/проценту відкриває More Info модалку `percent_entity`
+## Параметри (довідка)
 
-Також, якщо `openHistoryOnClick: true`, клік відкриває стандартний More Info модальний діалог для відповідної сутності (з історією/графіком всередині). За поведінку відповідає `historyClickMode` (за замовчуванням `more-info`).
-
-## Параметри (коротко)
-
-Нижче найбільш корисні (є і інші, але це базові):
-
-- `title`
-- `percent_entity`, `total_entity`
-- `temperature_entity`
-- `smart_entity`
-- `uptime_hours_entity`
-- `graphHeight`, `graphFontSize`
-- `hoursToShow`, `pointsPerHour`
-- `barWidthPx`
-- `temperatureGraphType` (`line`/`bar`)
-- `zoneGreenTo`, `zoneYellowTo` (пороги заповнення)
-- `zoneGreenColor`, `zoneYellowColor`, `zoneRedColor` (кольори зон)
-- `totalUnit`
-- `smartPassStrings`, `smartStateMap`
-- `openHistoryOnClick` (default `true`)
-- `historyClickMode` (`more-info` або `history-page`, default `more-info`)
-- `historyPath` (default `/history`, використовується лише коли `historyClickMode: history-page`)
-- `metrics` (масив характеристик для динамічного відображення)
-
+| Параметр | Опис |
+|----------|------|
+| `title` | Заголовок |
+| `percent_entity` | Сутність % зайнятого (0–100) |
+| `temperature_entity` | Сутність температури |
+| `total_entity` | Використовується при відновленні дефолтного списку `metrics` |
+| `barWidthPx` | Ширина бару (px) |
+| `zoneGreenTo`, `zoneYellowTo` | Верх меж зеленої / жовтої зони (≤) |
+| `zoneGreenColor`, `zoneYellowColor`, `zoneRedColor` | Кольори зон |
+| `temperatureThickness` | `thin` / `normal` / `thick` |
+| `temperatureFontSize` | Розмір цифри температури та шрифту на графіку |
+| `hoursToShow`, `pointsPerHour` | Параметри міні-графіка |
+| `graphHeight` | Висота графіка (px) |
+| `temperatureGraphType` | `bar` або `line` |
+| `showExtrema` | Показ min/max на графіку |
+| `metrics` | Масив характеристик |
