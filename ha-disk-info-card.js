@@ -54,6 +54,23 @@ const DEFAULTS = {
   // UI/UX
   openHistoryOnClick: true,
   historyPath: '/history',
+
+  // Fill zones (used %)
+  zoneGreenTo: 79,
+  zoneYellowTo: 90,
+  // Keep colors configurable only by thresholds (colors are fixed by defaults for now)
+  // Colors used for zones:
+  zoneGreenColor: '#27ae60',
+  zoneYellowColor: '#f39c12',
+  zoneRedColor: '#c0392b',
+
+  // Graph options
+  showExtrema: true,
+  showSubtitle: false,
+
+  // Metrics typography
+  metricPrimaryFontSize: 13,
+  metricSecondaryFontSize: 12,
 };
 
 function escapeHtml(text) {
@@ -209,18 +226,6 @@ class HaDiskInfoCard extends HTMLElement {
         padding: 12px;
         box-sizing: border-box;
       }
-      .header {
-        display: grid;
-        grid-template-columns: ${cfg.barWidthPx}px 1fr;
-        column-gap: 12px;
-        margin-bottom: 10px;
-      }
-      .headerText {
-        grid-column: 2;
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-      }
       .title {
         font-size: 18px;
         font-weight: 600;
@@ -239,21 +244,27 @@ class HaDiskInfoCard extends HTMLElement {
       }
 
       .barWrap {
-        min-height: ${cfg.barMinHeightPx}px;
-        height: 100%;
+        height: ${cfg.barMinHeightPx}px;
         position: relative;
-        display: flex;
-        align-items: flex-end;
         border-radius: 10px;
         overflow: hidden;
         background: rgba(120, 120, 120, 0.12);
       }
 
-      .barFill {
+      .barZoneBg {
+        position: absolute;
+        left: 0;
         width: 100%;
-        border-radius: 6px;
-        transition: height 0.35s ease;
-        background: ${'#27ae60'};
+        border-radius: 0;
+        opacity: 0.18;
+      }
+
+      .barFillSeg {
+        position: absolute;
+        left: 0;
+        width: 100%;
+        border-radius: 0;
+        transition: height 0.35s ease, bottom 0.35s ease;
       }
 
       .barPct {
@@ -261,6 +272,7 @@ class HaDiskInfoCard extends HTMLElement {
         left: 50%;
         bottom: 6px;
         transform: translateX(-50%);
+        z-index: 3;
         font-size: 12px;
         font-weight: 900;
         color: white;
@@ -273,6 +285,13 @@ class HaDiskInfoCard extends HTMLElement {
         flex-direction: column;
         gap: 10px;
         min-width: 0;
+      }
+
+      .graphHeader {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        margin-bottom: -2px;
       }
 
       .graph {
@@ -316,37 +335,45 @@ class HaDiskInfoCard extends HTMLElement {
         min-width: 0;
       }
       .metricPrimary {
-        font-size: 14px;
+        font-size: ${cfg.metricPrimaryFontSize}px;
         font-weight: 600;
-        white-space: nowrap;
+        white-space: normal;
         overflow: hidden;
-        text-overflow: ellipsis;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
       }
       .metricSecondary {
-        font-size: 12px;
+        font-size: ${cfg.metricSecondaryFontSize}px;
         opacity: 0.65;
-        white-space: nowrap;
+        white-space: normal;
         overflow: hidden;
-        text-overflow: ellipsis;
+        display: -webkit-box;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
       }
     `;
 
     this.shadowRoot.innerHTML = `
       <style>${style}</style>
       <div class="card">
-        <div class="header">
-          <div></div>
-          <div class="headerText">
-            <div class="title">${escapeHtml(cfg.title)}</div>
-            ${cfg.subtitle ? `<div class="subtitle">${escapeHtml(cfg.subtitle)}</div>` : ''}
-          </div>
-        </div>
         <div class="grid">
-          <div class="barWrap">
-            <div class="barFill" id="bar-fill"></div>
+          <div class="barWrap" id="bar-wrap">
+            <div class="barZoneBg" id="bg-green"></div>
+            <div class="barZoneBg" id="bg-yellow"></div>
+            <div class="barZoneBg" id="bg-red"></div>
+
+            <div class="barFillSeg" id="fill-green"></div>
+            <div class="barFillSeg" id="fill-yellow"></div>
+            <div class="barFillSeg" id="fill-red"></div>
+
             <div class="barPct" id="bar-pct">—%</div>
           </div>
           <div class="content">
+            <div class="graphHeader">
+              <div class="title">${escapeHtml(cfg.title)}</div>
+              ${cfg.showSubtitle && cfg.subtitle ? `<div class="subtitle">${escapeHtml(cfg.subtitle)}</div>` : ''}
+            </div>
             <div class="graph" id="${graphHostId}"></div>
             <div class="metrics">
               <button class="metricBtn" data-metric="used" aria-pressed="false">
@@ -376,7 +403,13 @@ class HaDiskInfoCard extends HTMLElement {
       </div>
     `;
 
-    this._barFillEl = this.shadowRoot.getElementById('bar-fill');
+    this._bgGreenEl = this.shadowRoot.getElementById('bg-green');
+    this._bgYellowEl = this.shadowRoot.getElementById('bg-yellow');
+    this._bgRedEl = this.shadowRoot.getElementById('bg-red');
+
+    this._fillGreenEl = this.shadowRoot.getElementById('fill-green');
+    this._fillYellowEl = this.shadowRoot.getElementById('fill-yellow');
+    this._fillRedEl = this.shadowRoot.getElementById('fill-red');
     this._barPctEl = this.shadowRoot.getElementById('bar-pct');
 
     this._usedPrimaryEl = this.shadowRoot.getElementById('text-used-primary');
@@ -504,10 +537,10 @@ class HaDiskInfoCard extends HTMLElement {
         graph: 'line',
         fill: 'fade',
         points: 'hover',
-        extrema: false,
+        extrema: !!cfg.showExtrema,
         legend: false,
         icon: false,
-        name: true,
+        name: false,
         state: true,
         labels: false,
       },
@@ -535,10 +568,60 @@ class HaDiskInfoCard extends HTMLElement {
     const smartRaw = this._getState(cfg.smart_entity);
     const uptimeH = this._getNumberState(cfg.uptime_hours_entity);
 
-    // Bar
+    // Bar (fill zones)
     const p = percent === null ? 0 : clamp(percent, 0, 100);
-    if (this._barFillEl) this._barFillEl.style.height = `${p}%`;
-    if (this._barFillEl) this._barFillEl.style.background = computeSeverityColor(p, cfg.barColors);
+
+    const greenTo = clamp(cfg.zoneGreenTo ?? 79, 0, 100);
+    const yellowToRaw = clamp(cfg.zoneYellowTo ?? 90, 0, 100);
+    const yellowTo = Math.max(greenTo, yellowToRaw);
+
+    const greenColor = cfg.zoneGreenColor ?? '#27ae60';
+    const yellowColor = cfg.zoneYellowColor ?? '#f39c12';
+    const redColor = cfg.zoneRedColor ?? '#c0392b';
+
+    const greenHeight = greenTo; // percent of total
+    const yellowHeight = Math.max(0, yellowTo - greenTo);
+    const redHeight = Math.max(0, 100 - yellowTo);
+
+    // Background zones
+    if (this._bgGreenEl) {
+      this._bgGreenEl.style.background = greenColor;
+      this._bgGreenEl.style.bottom = `0%`;
+      this._bgGreenEl.style.height = `${greenHeight}%`;
+    }
+    if (this._bgYellowEl) {
+      this._bgYellowEl.style.background = yellowColor;
+      this._bgYellowEl.style.bottom = `${greenTo}%`;
+      this._bgYellowEl.style.height = `${yellowHeight}%`;
+    }
+    if (this._bgRedEl) {
+      this._bgRedEl.style.background = redColor;
+      this._bgRedEl.style.bottom = `${yellowTo}%`;
+      this._bgRedEl.style.height = `${redHeight}%`;
+    }
+
+    // Fill intersection
+    const greenFill = clamp(p, 0, greenTo);
+    const yellowFill = clamp(p - greenTo, 0, yellowHeight);
+    const redFill = clamp(p - yellowTo, 0, redHeight);
+
+    if (this._fillGreenEl) {
+      this._fillGreenEl.style.background = greenColor;
+      this._fillGreenEl.style.bottom = `0%`;
+      this._fillGreenEl.style.height = `${greenFill}%`;
+    }
+    if (this._fillYellowEl) {
+      this._fillYellowEl.style.background = yellowColor;
+      this._fillYellowEl.style.bottom = `${greenFill}%`;
+      this._fillYellowEl.style.height = `${yellowFill}%`;
+    }
+    if (this._fillRedEl) {
+      this._fillRedEl.style.background = redColor;
+      this._fillRedEl.style.bottom = `${greenFill + yellowFill}%`;
+      this._fillRedEl.style.height = `${redFill}%`;
+    }
+
+    // Percent label
     if (this._barPctEl) {
       const rounded = p.toFixed(cfg.percentDecimals);
       this._barPctEl.textContent = `${rounded}%`;
@@ -596,6 +679,11 @@ class HaDiskInfoCardEditor extends HTMLElement {
       </div>
 
       <div class="row">
+        <ha-switch id="showSubtitle" style="margin-top: 6px;"></ha-switch>
+        <div class="hint">Show subtitle under title</div>
+      </div>
+
+      <div class="row">
         <ha-entity-picker id="percentEntity" label="Percent entity (0..100)"></ha-entity-picker>
         <ha-entity-picker id="totalEntity" label="Total entity (used/total denominator)"></ha-entity-picker>
         <ha-entity-picker id="temperatureEntity" label="Temperature entity"></ha-entity-picker>
@@ -618,6 +706,16 @@ class HaDiskInfoCardEditor extends HTMLElement {
         <ha-textfield id="barMinHeightPx" label="bar min height (px)"></ha-textfield>
       </div>
 
+      <div class="grid2">
+        <ha-textfield id="zoneGreenTo" label="zone_green_to (green <=)"></ha-textfield>
+        <ha-textfield id="zoneYellowTo" label="zone_yellow_to (yellow <=)"></ha-textfield>
+      </div>
+
+      <div class="row">
+        <ha-switch id="showExtrema" style="margin-top: 6px;"></ha-switch>
+        <div class="hint">Show min/max on temperature graph</div>
+      </div>
+
       <div class="row">
         <ha-textfield id="smartPassStrings" label="SMART pass keywords (comma separated)"></ha-textfield>
         <div class="hint">
@@ -634,6 +732,7 @@ class HaDiskInfoCardEditor extends HTMLElement {
     this._els = {
       title: this.shadowRoot.getElementById('title'),
       subtitle: this.shadowRoot.getElementById('subtitle'),
+      showSubtitle: this.shadowRoot.getElementById('showSubtitle'),
       totalUnit: this.shadowRoot.getElementById('totalUnit'),
       percentEntity: this.shadowRoot.getElementById('percentEntity'),
       totalEntity: this.shadowRoot.getElementById('totalEntity'),
@@ -646,6 +745,9 @@ class HaDiskInfoCardEditor extends HTMLElement {
       graphFontSize: this.shadowRoot.getElementById('graphFontSize'),
       barWidthPx: this.shadowRoot.getElementById('barWidthPx'),
       barMinHeightPx: this.shadowRoot.getElementById('barMinHeightPx'),
+      zoneGreenTo: this.shadowRoot.getElementById('zoneGreenTo'),
+      zoneYellowTo: this.shadowRoot.getElementById('zoneYellowTo'),
+      showExtrema: this.shadowRoot.getElementById('showExtrema'),
       smartPassStrings: this.shadowRoot.getElementById('smartPassStrings'),
       openHistoryOnClick: this.shadowRoot.getElementById('openHistoryOnClick'),
     };
@@ -657,9 +759,13 @@ class HaDiskInfoCardEditor extends HTMLElement {
       this._emitConfig();
     };
 
+    // ha-textfield can emit either `value-changed` or `change` depending on HA version.
     this._els.title.addEventListener('value-changed', textChanged('title'));
+    this._els.title.addEventListener('change', textChanged('title'));
     this._els.subtitle.addEventListener('value-changed', textChanged('subtitle'));
+    this._els.subtitle.addEventListener('change', textChanged('subtitle'));
     this._els.totalUnit.addEventListener('value-changed', textChanged('totalUnit'));
+    this._els.totalUnit.addEventListener('change', textChanged('totalUnit'));
 
     const numChanged = (key) => (ev) => {
       const v = ev.target.value;
@@ -668,12 +774,33 @@ class HaDiskInfoCardEditor extends HTMLElement {
       this._emitConfig();
     };
 
-    this._els.hoursToShow.addEventListener('value-changed', numChanged('hoursToShow'));
-    this._els.pointsPerHour.addEventListener('value-changed', numChanged('pointsPerHour'));
-    this._els.graphHeight.addEventListener('value-changed', numChanged('graphHeight'));
-    this._els.graphFontSize.addEventListener('value-changed', numChanged('graphFontSize'));
-    this._els.barWidthPx.addEventListener('value-changed', numChanged('barWidthPx'));
-    this._els.barMinHeightPx.addEventListener('value-changed', numChanged('barMinHeightPx'));
+    const bindNum = (el, key) => {
+      const handler = numChanged(key);
+      el.addEventListener('value-changed', handler);
+      el.addEventListener('change', handler);
+    };
+    bindNum(this._els.hoursToShow, 'hoursToShow');
+    bindNum(this._els.pointsPerHour, 'pointsPerHour');
+    bindNum(this._els.graphHeight, 'graphHeight');
+    bindNum(this._els.graphFontSize, 'graphFontSize');
+    bindNum(this._els.barWidthPx, 'barWidthPx');
+    bindNum(this._els.barMinHeightPx, 'barMinHeightPx');
+    bindNum(this._els.zoneGreenTo, 'zoneGreenTo');
+    bindNum(this._els.zoneYellowTo, 'zoneYellowTo');
+
+    // Switch helpers
+    const bindSwitch = (el, key) => {
+      const handler = (ev) => {
+        const checked =
+          typeof ev?.target?.checked === 'boolean' ? ev.target.checked : !!ev.detail?.value;
+        this._config = { ...this._config, [key]: checked };
+        this._emitConfig();
+      };
+      el.addEventListener('change', handler);
+      el.addEventListener('value-changed', handler);
+    };
+    bindSwitch(this._els.showSubtitle, 'showSubtitle');
+    bindSwitch(this._els.showExtrema, 'showExtrema');
 
     this._els.smartPassStrings.addEventListener('value-changed', (ev) => {
       const raw = (ev.target.value ?? '').toString();
@@ -700,16 +827,26 @@ class HaDiskInfoCardEditor extends HTMLElement {
       this._emitConfig();
     };
 
-    this._els.percentEntity.addEventListener('value-changed', entityChanged('percent_entity'));
-    this._els.totalEntity.addEventListener('value-changed', entityChanged('total_entity'));
-    this._els.temperatureEntity.addEventListener('value-changed', entityChanged('temperature_entity'));
-    this._els.smartEntity.addEventListener('value-changed', entityChanged('smart_entity'));
-    this._els.uptimeEntity.addEventListener('value-changed', entityChanged('uptime_hours_entity'));
+    const bindEntity = (el, key) => {
+      const handler = entityChanged(key);
+      el.addEventListener('value-changed', handler);
+      el.addEventListener('change', handler);
+    };
+    bindEntity(this._els.percentEntity, 'percent_entity');
+    bindEntity(this._els.totalEntity, 'total_entity');
+    bindEntity(this._els.temperatureEntity, 'temperature_entity');
+    bindEntity(this._els.smartEntity, 'smart_entity');
+    bindEntity(this._els.uptimeEntity, 'uptime_hours_entity');
   }
 
   set hass(hass) {
     this._hass = hass;
-    // ha-entity-picker uses hass implicitly when in document; no need to set explicitly.
+    // Ensure entity pickers receive hass explicitly (more reliable across HA versions).
+    if (this.shadowRoot) {
+      this.shadowRoot.querySelectorAll('ha-entity-picker').forEach((el) => {
+        el.hass = hass;
+      });
+    }
   }
 
   setConfig(config) {
@@ -717,6 +854,7 @@ class HaDiskInfoCardEditor extends HTMLElement {
 
     this._els.title.value = this._config.title ?? '';
     this._els.subtitle.value = this._config.subtitle ?? '';
+    this._els.showSubtitle.checked = this._config.showSubtitle ?? DEFAULTS.showSubtitle;
     this._els.totalUnit.value = this._config.totalUnit ?? 'GB';
 
     this._els.percentEntity.value = this._config.percent_entity ?? '';
@@ -731,6 +869,10 @@ class HaDiskInfoCardEditor extends HTMLElement {
     this._els.graphFontSize.value = this._config.graphFontSize ?? 65;
     this._els.barWidthPx.value = this._config.barWidthPx ?? 44;
     this._els.barMinHeightPx.value = this._config.barMinHeightPx ?? 180;
+
+    this._els.zoneGreenTo.value = this._config.zoneGreenTo ?? DEFAULTS.zoneGreenTo;
+    this._els.zoneYellowTo.value = this._config.zoneYellowTo ?? DEFAULTS.zoneYellowTo;
+    this._els.showExtrema.checked = this._config.showExtrema ?? DEFAULTS.showExtrema;
 
     this._els.smartPassStrings.value = (this._config.smartPassStrings ?? DEFAULTS.smartPassStrings).join(', ');
     this._els.openHistoryOnClick.checked = this._config.openHistoryOnClick ?? DEFAULTS.openHistoryOnClick;
