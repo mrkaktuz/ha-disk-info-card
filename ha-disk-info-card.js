@@ -637,82 +637,88 @@ class HaDiskInfoCardEditor extends HTMLElement {
     this._config = null;
     /** Щоб не перезаписати metrics порожнім масивом до першого _renderMetricEditors */
     this._metricsEditorRendered = false;
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.innerHTML = `
+    /**
+     * Light DOM (без Shadow Root): ha-entity-picker у Shadow DOM у Lovelace часто не рендериться.
+     */
+    this.innerHTML = `
+      <div class="ha-disk-info-card-editor-root">
       <style>
-        :host { display: block; padding: 8px; max-width: 100%; }
-        .section { margin-bottom: 16px; padding: 12px; border: 1px solid var(--divider-color); border-radius: 12px; }
-        .sectionTitle { font-weight: 600; margin-bottom: 10px; }
-        .row { display: grid; grid-template-columns: 1fr; gap: 10px; }
-        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .hint { font-size: 12px; opacity: 0.75; }
-        select {
+        .ha-disk-info-card-editor-root { display: block; padding: 8px; max-width: 100%; box-sizing: border-box; }
+        .ha-disk-info-card-editor-root .section { margin-bottom: 16px; padding: 12px; border: 1px solid var(--divider-color); border-radius: 12px; }
+        .ha-disk-info-card-editor-root .sectionTitle { font-weight: 600; margin-bottom: 10px; }
+        .ha-disk-info-card-editor-root .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .ha-disk-info-card-editor-root .hint { font-size: 12px; opacity: 0.75; }
+        .ha-disk-info-card-editor-root select {
           width: 100%; padding: 10px; border-radius: 12px;
           border: 1px solid var(--divider-color);
           background: var(--card-background-color); color: var(--primary-text-color);
           font: inherit; box-sizing: border-box;
         }
-        .btn {
+        .ha-disk-info-card-editor-root .btn {
           border: 1px solid var(--divider-color); border-radius: 10px;
           background: var(--card-background-color); color: var(--primary-text-color);
           padding: 8px 10px; cursor: pointer; width: 100%;
         }
-        .metricRow { border: 1px dashed var(--divider-color); border-radius: 10px; padding: 10px; display: grid; gap: 8px; }
-        ha-textfield, ha-entity-picker, ha-icon-picker { width: 100%; }
+        .ha-disk-info-card-editor-root .metricRow { border: 1px dashed var(--divider-color); border-radius: 10px; padding: 10px; display: grid; gap: 8px; }
+        .ha-disk-info-card-editor-root ha-textfield,
+        .ha-disk-info-card-editor-root ha-entity-picker,
+        .ha-disk-info-card-editor-root ha-icon-picker {
+          width: 100%; display: block; min-height: 56px; box-sizing: border-box;
+        }
       </style>
 
       <div class="section">
         <div class="sectionTitle">1. Заголовок</div>
-        <ha-textfield id="title" label="Текст"></ha-textfield>
+        <ha-textfield id="hdice-title" label="Текст"></ha-textfield>
       </div>
 
       <div class="section">
         <div class="sectionTitle">2. Вертикальний бар</div>
         <div class="hint">Сутність відсотка зайнятого місця (0–100). За замовчуванням: sensor.disk_used_space_percent</div>
-        <ha-entity-picker id="percentEntity" label="Сутність %"></ha-entity-picker>
-        <ha-textfield id="barWidthPx" label="Ширина (px)" type="number"></ha-textfield>
+        <ha-entity-picker id="hdice-percent" label="Сутність %" required></ha-entity-picker>
+        <ha-textfield id="hdice-barWidth" label="Ширина (px)" type="number"></ha-textfield>
         <div class="grid2">
-          <ha-textfield id="zoneGreenTo" label="Поріг зеленої зони (≤)" type="number"></ha-textfield>
-          <ha-textfield id="zoneYellowTo" label="Поріг жовтої зони (≤)" type="number"></ha-textfield>
+          <ha-textfield id="hdice-zoneGreen" label="Поріг зеленої зони (≤)" type="number"></ha-textfield>
+          <ha-textfield id="hdice-zoneYellow" label="Поріг жовтої зони (≤)" type="number"></ha-textfield>
         </div>
         <div class="grid2">
-          <ha-textfield id="zoneGreenColor" label="Колір зеленої"></ha-textfield>
-          <ha-textfield id="zoneYellowColor" label="Колір жовтої"></ha-textfield>
+          <ha-textfield id="hdice-greenCol" label="Колір зеленої"></ha-textfield>
+          <ha-textfield id="hdice-yellowCol" label="Колір жовтої"></ha-textfield>
         </div>
-        <ha-textfield id="zoneRedColor" label="Колір червоної"></ha-textfield>
+        <ha-textfield id="hdice-redCol" label="Колір червоної"></ha-textfield>
       </div>
 
       <div class="section">
         <div class="sectionTitle">3. Температура та графік</div>
         <div class="hint">Сутність температури. За замовчуванням: sensor.disk_temperature</div>
-        <ha-entity-picker id="temperatureEntity" label="Сутність температури"></ha-entity-picker>
+        <ha-entity-picker id="hdice-temperature" label="Сутність температури" required></ha-entity-picker>
         <div class="grid2">
           <div>
             <div class="hint" style="margin-bottom:6px;">Товщина цифри температури</div>
-            <select id="temperatureThickness">
+            <select id="hdice-tempThick">
               <option value="thin">Тонкий</option>
               <option value="normal">Звичайний</option>
               <option value="thick">Товстий</option>
             </select>
           </div>
-          <ha-textfield id="temperatureFontSize" label="Розмір шрифту показника (px)" type="number"></ha-textfield>
+          <ha-textfield id="hdice-tempFont" label="Розмір шрифту показника (px)" type="number"></ha-textfield>
         </div>
         <div class="grid2">
-          <ha-textfield id="hoursToShow" label="Годин для показу" type="number"></ha-textfield>
-          <ha-textfield id="pointsPerHour" label="Точок на годину" type="number"></ha-textfield>
+          <ha-textfield id="hdice-hours" label="Годин для показу" type="number"></ha-textfield>
+          <ha-textfield id="hdice-pph" label="Точок на годину" type="number"></ha-textfield>
         </div>
-        <ha-textfield id="graphHeight" label="Висота графіка (px)" type="number"></ha-textfield>
+        <ha-textfield id="hdice-graphH" label="Висота графіка (px)" type="number"></ha-textfield>
         <div class="grid2">
           <div>
             <div class="hint" style="margin-bottom:6px;">Тип графіка</div>
-            <select id="temperatureGraphType">
+            <select id="hdice-graphType">
               <option value="bar">Стовпчики</option>
               <option value="line">Лінія</option>
             </select>
           </div>
           <div>
             <div class="hint" style="margin-bottom:6px;">Показувати min/max</div>
-            <select id="showExtrema">
+            <select id="hdice-extrema">
               <option value="true">Так</option>
               <option value="false">Ні</option>
             </select>
@@ -723,30 +729,31 @@ class HaDiskInfoCardEditor extends HTMLElement {
       <div class="section">
         <div class="sectionTitle">4. Характеристики</div>
         <div class="hint">Клік відкриває модалку з графіком обраної сутності (поле «Графік (сутність)» або основна сутність).</div>
-        <div id="metrics-list"></div>
-        <button class="btn" type="button" id="add-metric">+ Додати характеристику</button>
+        <div id="hdice-metrics"></div>
+        <button class="btn" type="button" id="hdice-add-metric">+ Додати характеристику</button>
+      </div>
       </div>
     `;
 
     this._els = {
-      title: this.shadowRoot.getElementById('title'),
-      percentEntity: this.shadowRoot.getElementById('percentEntity'),
-      barWidthPx: this.shadowRoot.getElementById('barWidthPx'),
-      zoneGreenTo: this.shadowRoot.getElementById('zoneGreenTo'),
-      zoneYellowTo: this.shadowRoot.getElementById('zoneYellowTo'),
-      zoneGreenColor: this.shadowRoot.getElementById('zoneGreenColor'),
-      zoneYellowColor: this.shadowRoot.getElementById('zoneYellowColor'),
-      zoneRedColor: this.shadowRoot.getElementById('zoneRedColor'),
-      temperatureEntity: this.shadowRoot.getElementById('temperatureEntity'),
-      temperatureThickness: this.shadowRoot.getElementById('temperatureThickness'),
-      temperatureFontSize: this.shadowRoot.getElementById('temperatureFontSize'),
-      hoursToShow: this.shadowRoot.getElementById('hoursToShow'),
-      pointsPerHour: this.shadowRoot.getElementById('pointsPerHour'),
-      graphHeight: this.shadowRoot.getElementById('graphHeight'),
-      temperatureGraphType: this.shadowRoot.getElementById('temperatureGraphType'),
-      showExtrema: this.shadowRoot.getElementById('showExtrema'),
-      metricsList: this.shadowRoot.getElementById('metrics-list'),
-      addMetric: this.shadowRoot.getElementById('add-metric'),
+      title: this.querySelector('#hdice-title'),
+      percentEntity: this.querySelector('#hdice-percent'),
+      barWidthPx: this.querySelector('#hdice-barWidth'),
+      zoneGreenTo: this.querySelector('#hdice-zoneGreen'),
+      zoneYellowTo: this.querySelector('#hdice-zoneYellow'),
+      zoneGreenColor: this.querySelector('#hdice-greenCol'),
+      zoneYellowColor: this.querySelector('#hdice-yellowCol'),
+      zoneRedColor: this.querySelector('#hdice-redCol'),
+      temperatureEntity: this.querySelector('#hdice-temperature'),
+      temperatureThickness: this.querySelector('#hdice-tempThick'),
+      temperatureFontSize: this.querySelector('#hdice-tempFont'),
+      hoursToShow: this.querySelector('#hdice-hours'),
+      pointsPerHour: this.querySelector('#hdice-pph'),
+      graphHeight: this.querySelector('#hdice-graphH'),
+      temperatureGraphType: this.querySelector('#hdice-graphType'),
+      showExtrema: this.querySelector('#hdice-extrema'),
+      metricsList: this.querySelector('#hdice-metrics'),
+      addMetric: this.querySelector('#hdice-add-metric'),
     };
 
     const emit = () => this._emitConfig();
@@ -916,11 +923,11 @@ class HaDiskInfoCardEditor extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    this.shadowRoot.querySelectorAll('ha-entity-picker').forEach((el) => {
+    this.querySelectorAll('ha-entity-picker').forEach((el) => {
       el.hass = hass;
     });
     if (customElements.get('ha-icon-picker')) {
-      this.shadowRoot.querySelectorAll('ha-icon-picker').forEach((el) => {
+      this.querySelectorAll('ha-icon-picker').forEach((el) => {
         el.hass = hass;
       });
     }
@@ -955,6 +962,11 @@ class HaDiskInfoCardEditor extends HTMLElement {
     this._els.graphHeight.value = String(this._config.graphHeight ?? 60);
     this._els.temperatureGraphType.value = this._config.temperatureGraphType ?? 'bar';
     this._els.showExtrema.value = this._config.showExtrema !== false ? 'true' : 'false';
+
+    if (this._hass) {
+      this._els.percentEntity.hass = this._hass;
+      this._els.temperatureEntity.hass = this._hass;
+    }
 
     this._renderMetricEditors();
   }
