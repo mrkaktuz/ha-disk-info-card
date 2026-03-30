@@ -27,7 +27,7 @@ const DEFAULTS = {
 
   /** thin | normal | thick */
   temperatureThickness: 'thin',
-  /** Розмір цифри температури та шрифту на графіку (px) */
+  /** Розмір лише великого показника температури у шапці картки (px) */
   temperatureFontSize: 65,
 
   hoursToShow: 48,
@@ -50,7 +50,6 @@ function getDefaultMetrics(percentEntity, totalEntity) {
       entity: totalEntity || DEFAULT_ENTITY.total,
       value_template: '',
       unit: 'Гб',
-      graph_entity: '',
     },
     {
       id: 'used',
@@ -59,7 +58,6 @@ function getDefaultMetrics(percentEntity, totalEntity) {
       entity: '',
       value_template: `(num('${percentEntity}') * num('${totalEntity}')) / 100`,
       unit: 'Гб',
-      graph_entity: percentEntity,
     },
   ];
 }
@@ -126,165 +124,185 @@ function thicknessToVisual(th) {
   return { fontWeight: w, stroke, shadow };
 }
 
+/** Шрифт підписів mini-graph-card (min/max, вісі) — не залежить від temperatureFontSize. */
+const MINI_GRAPH_FONT_PX = 11;
+
+function formatUptimeHours(totalHours) {
+  if (totalHours == null || totalHours === '') return '';
+  const n = Number(totalHours);
+  if (!Number.isFinite(n) || n < 0) return '';
+  let h = Math.floor(n);
+  const y = Math.floor(h / 8760);
+  h %= 8760;
+  const d = Math.floor(h / 24);
+  const hr = h % 24;
+  const parts = [];
+  if (y > 0) parts.push(`${y} р`);
+  if (d > 0) parts.push(`${d} дн`);
+  parts.push(`${hr} год`);
+  return parts.join(' ');
+}
+
 /** Підписи полів візуального редактора (getConfigForm / hui-form-editor). */
 const DISK_INFO_LABELS = {
   title: 'Заголовок картки',
-  percent_entity: 'Бар: сутність % зайнятого (0–100)',
-  barWidthPx: 'Бар: ширина (px)',
-  zoneGreenTo: 'Бар: поріг зеленої зони (≤)',
-  zoneYellowTo: 'Бар: поріг жовтої зони (≤)',
-  zoneGreenColor: 'Бар: колір зеленої зони',
-  zoneYellowColor: 'Бар: колір жовтої зони',
-  zoneRedColor: 'Бар: колір червоної зони',
-  total_entity: 'Опційно: сутність загального обсягу (для метрик за замовч.)',
-  temperature_entity: 'Температура: сутність',
-  temperatureThickness: 'Температура: товщина цифри',
-  temperatureFontSize: 'Температура: розмір шрифту (px), також графік',
-  hoursToShow: 'Графік: годин історії',
-  pointsPerHour: 'Графік: точок на годину',
-  graphHeight: 'Графік: висота (px)',
-  graphLineColor: 'Графік: колір лінії / стовпчиків',
-  temperatureGraphType: 'Графік: тип',
-  showExtrema: 'Графік: показувати min/max',
-  metrics: 'Характеристики (список)',
-};
-
-const DISK_INFO_HELPERS = {
-  percent_entity: 'Типово шукається sensor.disk_used_space_percent або схожий сенсор.',
-  temperature_entity: 'Типово sensor.disk_temperature або схожий.',
-  total_entity: 'Типово sensor.disk_total. Використовується в дефолтних метриках «Всього» / «Зайнято».',
-  metrics: 'Додайте рядки «Всього», «Зайнято» тощо. Шаблон — JS з num(\'entity_id\'), state(), clamp().',
+  percent_entity: 'Сутність % зайнятого (0–100)',
+  barWidthPx: 'Ширина бару (px)',
+  zoneGreenTo: 'Поріг зеленої зони (≤)',
+  zoneYellowTo: 'Поріг жовтої зони (≤)',
+  zoneGreenColor: 'Колір зеленої зони',
+  zoneYellowColor: 'Колір жовтої зони',
+  zoneRedColor: 'Колір червоної зони',
+  temperature_entity: 'Сутність температури',
+  temperatureThickness: 'Товщина цифри температури',
+  temperatureFontSize: 'Розмір шрифту значення температури (px)',
+  hoursToShow: 'Годин історії на графіку',
+  pointsPerHour: 'Точок на годину',
+  graphHeight: 'Висота графіка (px)',
+  graphLineColor: 'Колір лінії / стовпчиків',
+  temperatureGraphType: 'Тип графіка',
+  showExtrema: 'Показувати min/max',
+  metrics: 'Характеристики',
 };
 
 const DISK_INFO_CONFIG_FORM = {
   schema: [
-    { name: 'title', selector: { text: {} } },
     {
-      name: 'percent_entity',
-      selector: { entity: {} },
+      type: 'expandable',
+      name: 'disksec_head',
+      flatten: true,
+      title: 'Заголовок',
+      schema: [{ name: 'title', required: true, selector: { text: {} } }],
     },
     {
-      type: 'grid',
-      name: '',
+      type: 'expandable',
+      name: 'disksec_bar',
+      flatten: true,
+      title: 'Вертикальний бар',
       schema: [
+        { name: 'percent_entity', required: true, selector: { entity: {} } },
         {
-          name: 'barWidthPx',
-          selector: { number: { min: 8, max: 200, mode: 'box' } },
+          type: 'grid',
+          name: '',
+          schema: [
+            { name: 'barWidthPx', selector: { number: { min: 8, max: 200, mode: 'box' } } },
+            { name: 'zoneGreenTo', selector: { number: { min: 0, max: 100, mode: 'box' } } },
+          ],
         },
+        { name: 'zoneYellowTo', selector: { number: { min: 0, max: 100, mode: 'box' } } },
         {
-          name: 'zoneGreenTo',
-          selector: { number: { min: 0, max: 100, mode: 'box' } },
+          type: 'grid',
+          name: '',
+          schema: [
+            { name: 'zoneGreenColor', selector: { text: { type: 'color' } } },
+            { name: 'zoneYellowColor', selector: { text: { type: 'color' } } },
+          ],
         },
+        { name: 'zoneRedColor', selector: { text: { type: 'color' } } },
       ],
     },
     {
-      name: 'zoneYellowTo',
-      selector: { number: { min: 0, max: 100, mode: 'box' } },
-    },
-    {
-      type: 'grid',
-      name: '',
+      type: 'expandable',
+      name: 'disksec_temp',
+      flatten: true,
+      title: 'Температура (показник)',
       schema: [
+        { name: 'temperature_entity', required: true, selector: { entity: {} } },
         {
-          name: 'zoneGreenColor',
-          selector: { text: { type: 'color' } },
+          name: 'temperatureThickness',
+          type: 'select',
+          options: [
+            ['thin', 'Тонкий'],
+            ['normal', 'Звичайний'],
+            ['thick', 'Товстий'],
+          ],
         },
-        {
-          name: 'zoneYellowColor',
-          selector: { text: { type: 'color' } },
-        },
-      ],
-    },
-    { name: 'zoneRedColor', selector: { text: { type: 'color' } } },
-    { name: 'total_entity', selector: { entity: {} } },
-    {
-      name: 'temperature_entity',
-      selector: { entity: {} },
-    },
-    {
-      name: 'temperatureThickness',
-      type: 'select',
-      options: [
-        ['thin', 'Тонкий'],
-        ['normal', 'Звичайний'],
-        ['thick', 'Товстий'],
-      ],
-    },
-    {
-      type: 'grid',
-      name: '',
-      schema: [
         {
           name: 'temperatureFontSize',
           selector: { number: { min: 12, max: 120, mode: 'box' } },
         },
-        {
-          name: 'hoursToShow',
-          selector: { number: { min: 1, max: 168, mode: 'box' } },
-        },
       ],
     },
     {
-      type: 'grid',
-      name: '',
+      type: 'expandable',
+      name: 'disksec_graph',
+      flatten: true,
+      title: 'Графік температури',
       schema: [
         {
-          name: 'pointsPerHour',
-          selector: { number: { min: 1, max: 60, mode: 'box' } },
+          type: 'grid',
+          name: '',
+          schema: [
+            { name: 'hoursToShow', selector: { number: { min: 1, max: 168, mode: 'box' } } },
+            { name: 'pointsPerHour', selector: { number: { min: 1, max: 60, mode: 'box' } } },
+          ],
         },
+        { name: 'graphHeight', selector: { number: { min: 20, max: 400, mode: 'box' } } },
+        { name: 'graphLineColor', selector: { text: { type: 'color' } } },
         {
-          name: 'graphHeight',
-          selector: { number: { min: 20, max: 400, mode: 'box' } },
+          name: 'temperatureGraphType',
+          type: 'select',
+          options: [
+            ['bar', 'Стовпчики'],
+            ['line', 'Лінія'],
+          ],
         },
+        { name: 'showExtrema', selector: { boolean: {} } },
       ],
     },
-    { name: 'graphLineColor', selector: { text: { type: 'color' } } },
     {
-      name: 'temperatureGraphType',
-      type: 'select',
-      options: [
-        ['bar', 'Стовпчики'],
-        ['line', 'Лінія'],
-      ],
-    },
-    { name: 'showExtrema', selector: { boolean: {} } },
-    {
-      name: 'metrics',
-      selector: {
-        object: {
-          multiple: true,
-          label_field: 'title',
-          fields: {
-            id: {
-              label: 'ID (опційно)',
-              required: false,
-              selector: { text: {} },
-            },
-            title: { label: 'Заголовок', selector: { text: {} } },
-            icon: { label: 'Іконка', selector: { icon: {} } },
-            entity: { label: 'Сутність', selector: { entity: {} } },
-            value_template: {
-              label: 'Шаблон значення (JS)',
-              selector: { text: { multiline: true } },
-            },
-            unit: { label: 'Розмірність', selector: { text: {} } },
-            graph_entity: {
-              label: 'Сутність для графіка в модалці',
-              selector: { entity: {} },
+      type: 'expandable',
+      name: 'disksec_metrics',
+      flatten: true,
+      title: 'Характеристики',
+      schema: [
+        {
+          name: 'metrics',
+          selector: {
+            object: {
+              multiple: true,
+              label_field: 'title',
+              fields: {
+                title: { label: 'Заголовок', required: true, selector: { text: {} } },
+                icon: { label: 'Іконка', required: true, selector: { icon: {} } },
+                entity: { label: 'Сутність', selector: { entity: {} } },
+                value_template: {
+                  label: 'Шаблон значення (JS)',
+                  selector: { text: { multiline: true } },
+                },
+                unit: { label: 'Розмірність', selector: { text: {} } },
+              },
             },
           },
         },
-      },
+      ],
     },
   ],
+  assertConfig(config) {
+    const m = config?.metrics;
+    if (!Array.isArray(m)) return;
+    for (let i = 0; i < m.length; i++) {
+      const row = m[i];
+      if (!row?.title || !String(row.title).trim()) {
+        throw new Error(`Характеристика ${i + 1}: вкажіть заголовок`);
+      }
+      if (!row?.icon || !String(row.icon).trim()) {
+        throw new Error(`Характеристика ${i + 1}: вкажіть іконку`);
+      }
+      const ent = row.entity && String(row.entity).trim();
+      const tpl = row.value_template && String(row.value_template).trim();
+      if (!ent && !tpl) {
+        throw new Error(`Характеристика ${i + 1}: потрібна сутність або шаблон значення`);
+      }
+    }
+  },
   computeLabel(schema) {
     const n = schema.name;
     if (n && DISK_INFO_LABELS[n]) return DISK_INFO_LABELS[n];
     return n || '';
   },
-  computeHelper(schema) {
-    const n = schema.name;
-    return (n && DISK_INFO_HELPERS[n]) || '';
+  computeHelper() {
+    return '';
   },
 };
 
@@ -335,7 +353,6 @@ class HaDiskInfoCard extends HTMLElement {
         entity: m?.entity ?? '',
         value_template: m?.value_template ?? '',
         unit: m?.unit ?? '',
-        graph_entity: m?.graph_entity ?? '',
       }));
     }
     this._config = merged;
@@ -450,24 +467,26 @@ class HaDiskInfoCard extends HTMLElement {
       mini-graph-card { border-radius: 0 !important; overflow: visible !important; }
       .metrics {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
         gap: 10px;
+        width: 100%;
       }
       .metricBtn {
         appearance: none; border: 1px solid rgba(120,120,120,0.1); border-radius: 12px;
         background: rgba(120,120,120,0.06); padding: 10px; min-width: 0; cursor: pointer;
-        display: flex; align-items: flex-start; gap: 10px; width: 100%;
-        grid-column: span var(--metric-span, 1);
+        display: flex; align-items: center; gap: 10px; width: 100%;
+        box-sizing: border-box;
       }
+      .metricBtn[data-empty="1"] { cursor: default; opacity: 0.65; }
       .metricIcon { width: 22px; color: var(--primary-text-color); flex: 0 0 22px; }
-      .metricText { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; align-items: flex-start; }
+      .metricText { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; align-items: flex-start; overflow: hidden; }
       .metricPrimary {
         font-size: 13px; font-weight: 600;
-        white-space: normal; word-break: break-word; max-width: 100%;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
       }
       .metricSecondary {
         font-size: 12px; opacity: 0.65;
-        white-space: normal; word-break: break-word; max-width: 100%;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
       }
     `;
 
@@ -609,7 +628,7 @@ class HaDiskInfoCard extends HTMLElement {
     try {
       const fn = new Function(
         'ctx',
-        `const { num, state, clamp } = ctx; return (${s});`
+        `const { num, state, clamp, formatUptimeHours, percent_entity, total_entity, temperature_entity } = ctx; return (${s});`
       );
       const v = fn(ctx);
       return v === undefined || v === null ? null : v;
@@ -627,27 +646,6 @@ class HaDiskInfoCard extends HTMLElement {
     }
     const t = raw.toString();
     return u ? `${t} ${u}` : t;
-  }
-
-  _pickSpan(primary, secondary) {
-    const len = `${primary} ${secondary}`.trim().length;
-    if (len > 34) return 3;
-    if (len > 18) return 2;
-    return 1;
-  }
-
-  _layoutSpans(items) {
-    const spans = [];
-    let rowFree = 3;
-    for (let i = 0; i < items.length; i++) {
-      let span = Math.max(1, Math.min(3, items[i].span ?? 1));
-      if (span > rowFree) rowFree = 3;
-      if (i === items.length - 1 && rowFree === 3 && span === 1) span = 3;
-      spans.push(span);
-      rowFree -= span;
-      if (rowFree <= 0) rowFree = 3;
-    }
-    return spans;
   }
 
   _renderMetrics(ctx) {
@@ -790,6 +788,7 @@ class HaDiskInfoCard extends HTMLElement {
       num: (id) => this._getNumberState(id),
       state: (id) => this._getState(id),
       clamp,
+      formatUptimeHours,
       percent_entity: percentEntity,
       total_entity: totalEntity,
       temperature_entity: temperatureEntity,
