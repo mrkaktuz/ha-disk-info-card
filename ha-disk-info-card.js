@@ -387,6 +387,7 @@ class HaDiskInfoCard extends HTMLElement {
         entity: m?.entity ?? '',
         value_template: m?.value_template ?? '',
         unit: m?.unit ?? '',
+        graph_entity: m?.graph_entity != null ? String(m.graph_entity) : '',
       }));
     }
     this._config = merged;
@@ -636,7 +637,7 @@ class HaDiskInfoCard extends HTMLElement {
       points_per_hour: cfg.pointsPerHour,
       hour24: cfg.hour24,
       height: cfg.graphHeight + (cfg.showExtrema ? 24 : 0),
-      font_size: cfg.temperatureFontSize,
+      font_size: MINI_GRAPH_FONT_PX,
       line_color: cfg.graphLineColor,
       group: true,
       show: {
@@ -687,13 +688,13 @@ class HaDiskInfoCard extends HTMLElement {
     const cfg = this._config;
     const metrics = Array.isArray(cfg.metrics) ? cfg.metrics : [];
 
-    const items = metrics.map((m, idx) => {
+    const items = metrics.map((m) => {
       const title = (m.title ?? m.name ?? '').toString();
       const icon = (m.icon ?? 'mdi:information-outline').toString();
       const unit = (m.unit ?? '').toString();
-      const entityId = (m.entity ?? '').toString();
+      const entityId = (m.entity ?? '').toString().trim();
       const tpl = (m.value_template ?? '').toString();
-      const graphEntity = (m.graph_entity ?? '').toString();
+      const graphEntity = (m.graph_entity ?? '').toString().trim();
 
       let primary = '—';
       if (tpl) {
@@ -705,20 +706,18 @@ class HaDiskInfoCard extends HTMLElement {
         else primary = this._getState(entityId) ?? '—';
       }
 
-      const span = this._pickSpan(primary, title);
-      const modalEntity = graphEntity || entityId;
+      let modalEntity = graphEntity || entityId;
+      if (!modalEntity && tpl) modalEntity = ctx.percent_entity || '';
 
-      return { title, icon, primary, span, modalEntity };
+      return { title, icon, primary, modalEntity };
     });
-
-    const spans = this._layoutSpans(items);
 
     this._metricsContainerEl.innerHTML = items
       .map(
-        (m, idx) => `
+        (m) => `
       <button class="metricBtn" type="button" data-graph-entity="${escapeHtml(
         m.modalEntity
-      )}" style="--metric-span:${spans[idx]};">
+      )}" data-empty="${m.modalEntity ? '0' : '1'}">
         <ha-icon class="metricIcon" icon="${escapeHtml(m.icon)}"></ha-icon>
         <div class="metricText">
           <div class="metricPrimary">${escapeHtml(m.primary)}</div>
@@ -731,6 +730,7 @@ class HaDiskInfoCard extends HTMLElement {
 
     this._metricsContainerEl.querySelectorAll('.metricBtn').forEach((btn) => {
       btn.addEventListener('click', () => {
+        if (btn.getAttribute('data-empty') === '1') return;
         const ge = btn.getAttribute('data-graph-entity');
         if (ge) this._openMoreInfo(ge);
       });
