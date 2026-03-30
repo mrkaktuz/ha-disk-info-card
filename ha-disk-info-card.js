@@ -18,7 +18,7 @@ const DEFAULTS = {
   temperatureValueFontWeight: 400,
 
   // Auto-scroll for metric values under the graph
-  metricAutoScroll: true,
+  metricAutoScroll: false,
   metricAutoScrollPxPerSecond: 40,
 
   barColors: [
@@ -214,6 +214,10 @@ class HaDiskInfoCard extends HTMLElement {
     this._smartSecondaryInnerEl = null;
     this._uptimeSecondaryInnerEl = null;
 
+    this._barWrapEl = null;
+    this._contentEl = null;
+    this._resizeObserver = null;
+
     this.attachShadow({ mode: 'open' });
   }
 
@@ -259,7 +263,8 @@ class HaDiskInfoCard extends HTMLElement {
       ...(this._config.icons ?? {}),
     };
 
-    this._activeGraphKey = this._config.initial_graph_key ?? 'temperature';
+    // The card should always render temperature history.
+    this._activeGraphKey = 'temperature';
     this._buildDom();
     this._updateGraphConfig();
     this._updateValues();
@@ -315,7 +320,7 @@ class HaDiskInfoCard extends HTMLElement {
 
       .barWrap {
         min-height: ${cfg.barMinHeightPx}px;
-        height: 100%;
+        height: auto;
         align-self: stretch;
         position: relative;
         border-radius: 10px;
@@ -383,6 +388,10 @@ class HaDiskInfoCard extends HTMLElement {
       .activeValueText {
         font-size: 22px;
         white-space: nowrap;
+        display: flex;
+        align-items: baseline;
+        justify-content: flex-end;
+        gap: 0px;
       }
 
       .activeValueNumber {
@@ -398,9 +407,10 @@ class HaDiskInfoCard extends HTMLElement {
         font-size: 12px;
         opacity: 0.7;
         white-space: nowrap;
-        margin-left: 4px;
-        vertical-align: text-top;
+        margin-left: 1px;
+        vertical-align: baseline;
         display: inline-block;
+        line-height: 1;
       }
 
       .activeValueUnit:empty {
@@ -412,8 +422,8 @@ class HaDiskInfoCard extends HTMLElement {
       }
 
       .metrics {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        display: flex;
+        flex-direction: column;
         gap: 10px;
       }
 
@@ -428,6 +438,7 @@ class HaDiskInfoCard extends HTMLElement {
         display: flex;
         align-items: center;
         gap: 10px;
+        width: 100%;
       }
 
       .metricBtn[aria-pressed="true"] {
@@ -450,27 +461,31 @@ class HaDiskInfoCard extends HTMLElement {
       .metricPrimary {
         font-size: ${cfg.metricPrimaryFontSize}px;
         font-weight: 600;
-        white-space: nowrap;
-        overflow: hidden;
+        white-space: normal;
+        overflow: visible;
+        word-break: break-word;
         display: block;
         max-width: 100%;
       }
       .metricSecondary {
         font-size: ${cfg.metricSecondaryFontSize}px;
         opacity: 0.65;
-        white-space: nowrap;
-        overflow: hidden;
+        white-space: normal;
+        overflow: visible;
+        word-break: break-word;
         display: block;
         max-width: 100%;
       }
 
       .metricScrollInner {
-        display: inline-block;
-        white-space: nowrap;
+        display: block;
+        white-space: normal;
         transform: translateX(0);
       }
 
       .metricScrollInner[data-marquee="true"] {
+        white-space: nowrap;
+        display: inline-block;
         animation: marquee var(--scroll-duration, 10s) linear infinite alternate;
       }
 
@@ -499,7 +514,7 @@ class HaDiskInfoCard extends HTMLElement {
 
             <div class="barPct" id="bar-pct">—%</div>
           </div>
-          <div class="content">
+          <div class="content" id="card-content">
             <div class="graphHeader">
               <div class="title">${escapeHtml(cfg.title)}</div>
               <button class="activeValueBtn" id="active-value-btn" type="button" data-active-graph="${this._activeGraphKey}">
@@ -557,7 +572,9 @@ class HaDiskInfoCard extends HTMLElement {
     this._fillGreenEl = this.shadowRoot.getElementById('fill-green');
     this._fillYellowEl = this.shadowRoot.getElementById('fill-yellow');
     this._fillRedEl = this.shadowRoot.getElementById('fill-red');
+    this._barWrapEl = this.shadowRoot.getElementById('bar-wrap');
     this._barPctEl = this.shadowRoot.getElementById('bar-pct');
+    this._contentEl = this.shadowRoot.getElementById('card-content');
 
     this._usedPrimaryOuterEl = this.shadowRoot.getElementById('text-used-primary');
     this._smartPrimaryOuterEl = this.shadowRoot.getElementById('text-smart-primary');
@@ -587,6 +604,8 @@ class HaDiskInfoCard extends HTMLElement {
       });
     }
 
+    this._setupBarHeightObserver();
+
     this._iconSmartEl = this.shadowRoot.getElementById('icon-smart');
 
     const host = this.shadowRoot.getElementById(graphHostId);
@@ -602,36 +621,16 @@ class HaDiskInfoCard extends HTMLElement {
   }
 
   _onMetricClick(metricKey) {
-    // Map metric -> graph entity key.
-    if (metricKey === 'used') this._activeGraphKey = 'usedPercent';
-    if (metricKey === 'smart') this._activeGraphKey = 'smart';
-    if (metricKey === 'uptime') this._activeGraphKey = 'uptimeHours';
+    // Always keep the temperature graph as-is; clicks only open a standard HA modal.
+    if (!this._config?.openHistoryOnClick) return;
 
-    // Update active state UI.
-    this.shadowRoot.querySelectorAll('.metricBtn').forEach((btn) => {
-      const k = btn.getAttribute('data-metric');
-      const pressed =
-        (metricKey === 'used' && this._activeGraphKey === 'usedPercent') ||
-        (metricKey === 'smart' && this._activeGraphKey === 'smart') ||
-        (metricKey === 'uptime' && this._activeGraphKey === 'uptimeHours');
-      btn.setAttribute('aria-pressed', pressed ? 'true' : 'false');
-    });
+    const cfg = this._config;
+    let entityId = null;
+    if (metricKey === 'used') entityId = cfg.percent_entity;
+    if (metricKey === 'smart') entityId = cfg.smart_entity;
+    if (metricKey === 'uptime') entityId = cfg.uptime_hours_entity;
 
-    // Optionally open entity modal (with graph in More Info).
-    if (this._config?.openHistoryOnClick) {
-      const cfg = this._config;
-      let entityId = null;
-      if (metricKey === 'used') entityId = cfg.percent_entity;
-      if (metricKey === 'smart') entityId = cfg.smart_entity;
-      if (metricKey === 'uptime') entityId = cfg.uptime_hours_entity;
-      if (entityId) {
-        this._openEntityWithGraphModal(entityId);
-      }
-    }
-
-    this._updateGraphConfig();
-    // Header value depends on active graph key.
-    this._updateValues();
+    if (entityId) this._openEntityWithGraphModal(entityId);
   }
 
   _openHistoryForGraphKey(graphKey) {
@@ -733,6 +732,34 @@ class HaDiskInfoCard extends HTMLElement {
     this._maybeStartMarquee(this._usedSecondaryOuterEl, this._usedSecondaryInnerEl);
     this._maybeStartMarquee(this._smartSecondaryOuterEl, this._smartSecondaryInnerEl);
     this._maybeStartMarquee(this._uptimeSecondaryOuterEl, this._uptimeSecondaryInnerEl);
+  }
+
+  _setupBarHeightObserver() {
+    if (this._resizeObserver) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
+    }
+
+    if (!('ResizeObserver' in window)) return;
+    if (!this._barWrapEl || !this._contentEl) return;
+
+    const barWrapEl = this._barWrapEl;
+    const contentEl = this._contentEl;
+
+    const apply = (heightPx) => {
+      const minH = this._config?.barMinHeightPx ?? 0;
+      const h = Math.max(minH, heightPx ?? 0);
+      barWrapEl.style.height = `${h}px`;
+    };
+
+    // Initial apply.
+    apply(contentEl.getBoundingClientRect().height);
+
+    this._resizeObserver = new ResizeObserver((entries) => {
+      const cr = entries?.[0]?.contentRect;
+      apply(cr?.height);
+    });
+    this._resizeObserver.observe(contentEl);
   }
 
   _ensureGraphElement() {
@@ -985,71 +1012,97 @@ class HaDiskInfoCardEditor extends HTMLElement {
         .row { display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 12px; }
         .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .hint { font-size: 12px; opacity: 0.7; }
+        .selectWrap { width: 100%; }
+        .selectLabel { font-size: 12px; opacity: 0.75; margin-bottom: 6px; }
+        select {
+          width: 100%;
+          padding: 10px 10px;
+          border: 1px solid rgba(120,120,120,0.18);
+          border-radius: 12px;
+          background: rgba(120,120,120,0.06);
+          color: var(--primary-text-color, inherit);
+          box-sizing: border-box;
+        }
         ha-textfield, ha-entity-picker { width: 100%; }
       </style>
       <div class="row">
-        <ha-textfield id="title" label="Title"></ha-textfield>
-        <ha-textfield id="totalUnit" label="Total unit (e.g. GB)"></ha-textfield>
+        <ha-textfield id="title" label="Заголовок"></ha-textfield>
+        <ha-textfield id="totalUnit" label="Одиниця total (наприклад GB)"></ha-textfield>
       </div>
 
       <div class="row">
-        <ha-entity-picker id="percentEntity" label="Percent entity (0..100)"></ha-entity-picker>
-        <ha-entity-picker id="totalEntity" label="Total entity (used/total denominator)"></ha-entity-picker>
-        <ha-entity-picker id="temperatureEntity" label="Temperature entity"></ha-entity-picker>
-        <ha-entity-picker id="smartEntity" label="SMART result entity (text)"></ha-entity-picker>
-        <ha-entity-picker id="uptimeEntity" label="Uptime (hours) entity"></ha-entity-picker>
+        <ha-entity-picker id="percentEntity" label="Сутність used % (0..100)"></ha-entity-picker>
+        <ha-entity-picker id="totalEntity" label="Сутність total (для used/total)"></ha-entity-picker>
+        <ha-entity-picker id="temperatureEntity" label="Сутність температури"></ha-entity-picker>
+        <ha-entity-picker id="smartEntity" label="SMART результат (рядок)"></ha-entity-picker>
+        <ha-entity-picker id="uptimeEntity" label="Напрацювання (години)"></ha-entity-picker>
       </div>
 
       <div class="grid2">
-        <ha-textfield id="hoursToShow" label="hours_to_show"></ha-textfield>
-        <ha-textfield id="pointsPerHour" label="points_per_hour"></ha-textfield>
+        <ha-textfield id="hoursToShow" label="Годин для показу"></ha-textfield>
+        <ha-textfield id="pointsPerHour" label="Точок на годину"></ha-textfield>
       </div>
 
       <div class="grid2">
-        <ha-textfield id="graphHeight" label="graph height (px)"></ha-textfield>
-        <ha-textfield id="graphFontSize" label="graph font size"></ha-textfield>
+        <ha-textfield id="graphHeight" label="Висота графіка (px)"></ha-textfield>
+        <ha-textfield id="graphFontSize" label="Розмір шрифту графіка"></ha-textfield>
       </div>
 
       <div class="grid2">
-        <ha-textfield id="barWidthPx" label="bar width (px)"></ha-textfield>
-        <ha-textfield id="temperatureGraphType" label="temperature_graph_type (line/bar)"></ha-textfield>
+        <ha-textfield id="barWidthPx" label="Ширина смуги (px)"></ha-textfield>
+        <div class="selectWrap">
+          <div class="selectLabel">Тип графіка температури</div>
+          <select id="temperatureGraphType">
+            <option value="line">Лінія</option>
+            <option value="bar">Стовпчики</option>
+          </select>
+        </div>
       </div>
 
       <div class="grid2">
-        <ha-textfield id="temperatureValueFontWeight" label="temperature_value_font_weight (e.g. 500)"></ha-textfield>
+        <div class="selectWrap">
+          <div class="selectLabel">Товщина цифри температури</div>
+          <select id="temperatureValueFontWeight">
+            <option value="300">Тонка</option>
+            <option value="400">Звичайна</option>
+            <option value="500">Середня</option>
+            <option value="600">Напівжирна</option>
+            <option value="700">Жирна</option>
+          </select>
+        </div>
         <ha-switch id="metricAutoScroll" style="margin-top: 6px;"></ha-switch>
       </div>
-      <div class="hint">Auto-scroll long metric texts (primary/secondary) under the graph.</div>
+      <div class="hint">Прокрутка довгих значень (якщо не вмістилось).</div>
 
       <div class="grid2">
-        <ha-textfield id="zoneGreenTo" label="zone_green_to (green <=)"></ha-textfield>
-        <ha-textfield id="zoneYellowTo" label="zone_yellow_to (yellow <=)"></ha-textfield>
+        <ha-textfield id="zoneGreenTo" label="Поріг зеленої зони (≤)"></ha-textfield>
+        <ha-textfield id="zoneYellowTo" label="Поріг жовтої зони (≤)"></ha-textfield>
       </div>
 
       <div class="grid2">
-        <ha-textfield id="zoneGreenColor" label="zone_green_color (#RRGGBB)"></ha-textfield>
-        <ha-textfield id="zoneYellowColor" label="zone_yellow_color (#RRGGBB)"></ha-textfield>
+        <ha-textfield id="zoneGreenColor" label="Колір зеленої зони (#RRGGBB)"></ha-textfield>
+        <ha-textfield id="zoneYellowColor" label="Колір жовтої зони (#RRGGBB)"></ha-textfield>
       </div>
 
       <div class="row">
-        <ha-textfield id="zoneRedColor" label="zone_red_color (#RRGGBB)"></ha-textfield>
+        <ha-textfield id="zoneRedColor" label="Колір червоної зони (#RRGGBB)"></ha-textfield>
       </div>
 
       <div class="row">
         <ha-switch id="showExtrema" style="margin-top: 6px;"></ha-switch>
-        <div class="hint">Show min/max on temperature graph</div>
+        <div class="hint">Показувати min/max на графіку температури</div>
       </div>
 
       <div class="row">
-        <ha-textfield id="smartPassStrings" label="SMART pass keywords (comma separated)"></ha-textfield>
+        <ha-textfield id="smartPassStrings" label="SMART: ключові слова OK (через кому)"></ha-textfield>
         <div class="hint">
-          If SMART text contains any of these keywords (case-insensitive), it will be treated as Passed.
+          Якщо SMART текст містить будь-яке з цих слів (без урахування регістру) — буде вважатися Пройдений.
         </div>
       </div>
 
       <div class="row">
         <ha-switch id="openHistoryOnClick" style="margin-top: 6px;"></ha-switch>
-        <div class="hint">Open HA standard More Info modal (with history/graph) when clicking metrics.</div>
+        <div class="hint">Відкривати стандартний More Info (історія/графік) при кліку.</div>
       </div>
     `;
 
