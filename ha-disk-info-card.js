@@ -126,6 +126,168 @@ function thicknessToVisual(th) {
   return { fontWeight: w, stroke, shadow };
 }
 
+/** Підписи полів візуального редактора (getConfigForm / hui-form-editor). */
+const DISK_INFO_LABELS = {
+  title: 'Заголовок картки',
+  percent_entity: 'Бар: сутність % зайнятого (0–100)',
+  barWidthPx: 'Бар: ширина (px)',
+  zoneGreenTo: 'Бар: поріг зеленої зони (≤)',
+  zoneYellowTo: 'Бар: поріг жовтої зони (≤)',
+  zoneGreenColor: 'Бар: колір зеленої зони',
+  zoneYellowColor: 'Бар: колір жовтої зони',
+  zoneRedColor: 'Бар: колір червоної зони',
+  total_entity: 'Опційно: сутність загального обсягу (для метрик за замовч.)',
+  temperature_entity: 'Температура: сутність',
+  temperatureThickness: 'Температура: товщина цифри',
+  temperatureFontSize: 'Температура: розмір шрифту (px), також графік',
+  hoursToShow: 'Графік: годин історії',
+  pointsPerHour: 'Графік: точок на годину',
+  graphHeight: 'Графік: висота (px)',
+  graphLineColor: 'Графік: колір лінії / стовпчиків',
+  temperatureGraphType: 'Графік: тип',
+  showExtrema: 'Графік: показувати min/max',
+  metrics: 'Характеристики (список)',
+};
+
+const DISK_INFO_HELPERS = {
+  percent_entity: 'Типово шукається sensor.disk_used_space_percent або схожий сенсор.',
+  temperature_entity: 'Типово sensor.disk_temperature або схожий.',
+  total_entity: 'Типово sensor.disk_total. Використовується в дефолтних метриках «Всього» / «Зайнято».',
+  metrics: 'Додайте рядки «Всього», «Зайнято» тощо. Шаблон — JS з num(\'entity_id\'), state(), clamp().',
+};
+
+const DISK_INFO_CONFIG_FORM = {
+  schema: [
+    { name: 'title', selector: { text: {} } },
+    {
+      name: 'percent_entity',
+      selector: { entity: {} },
+    },
+    {
+      type: 'grid',
+      name: '',
+      schema: [
+        {
+          name: 'barWidthPx',
+          selector: { number: { min: 8, max: 200, mode: 'box' } },
+        },
+        {
+          name: 'zoneGreenTo',
+          selector: { number: { min: 0, max: 100, mode: 'box' } },
+        },
+      ],
+    },
+    {
+      name: 'zoneYellowTo',
+      selector: { number: { min: 0, max: 100, mode: 'box' } },
+    },
+    {
+      type: 'grid',
+      name: '',
+      schema: [
+        {
+          name: 'zoneGreenColor',
+          selector: { text: { type: 'color' } },
+        },
+        {
+          name: 'zoneYellowColor',
+          selector: { text: { type: 'color' } },
+        },
+      ],
+    },
+    { name: 'zoneRedColor', selector: { text: { type: 'color' } } },
+    { name: 'total_entity', selector: { entity: {} } },
+    {
+      name: 'temperature_entity',
+      selector: { entity: {} },
+    },
+    {
+      name: 'temperatureThickness',
+      type: 'select',
+      options: [
+        ['thin', 'Тонкий'],
+        ['normal', 'Звичайний'],
+        ['thick', 'Товстий'],
+      ],
+    },
+    {
+      type: 'grid',
+      name: '',
+      schema: [
+        {
+          name: 'temperatureFontSize',
+          selector: { number: { min: 12, max: 120, mode: 'box' } },
+        },
+        {
+          name: 'hoursToShow',
+          selector: { number: { min: 1, max: 168, mode: 'box' } },
+        },
+      ],
+    },
+    {
+      type: 'grid',
+      name: '',
+      schema: [
+        {
+          name: 'pointsPerHour',
+          selector: { number: { min: 1, max: 60, mode: 'box' } },
+        },
+        {
+          name: 'graphHeight',
+          selector: { number: { min: 20, max: 400, mode: 'box' } },
+        },
+      ],
+    },
+    { name: 'graphLineColor', selector: { text: { type: 'color' } } },
+    {
+      name: 'temperatureGraphType',
+      type: 'select',
+      options: [
+        ['bar', 'Стовпчики'],
+        ['line', 'Лінія'],
+      ],
+    },
+    { name: 'showExtrema', selector: { boolean: {} } },
+    {
+      name: 'metrics',
+      selector: {
+        object: {
+          multiple: true,
+          label_field: 'title',
+          fields: {
+            id: {
+              label: 'ID (опційно)',
+              required: false,
+              selector: { text: {} },
+            },
+            title: { label: 'Заголовок', selector: { text: {} } },
+            icon: { label: 'Іконка', selector: { icon: {} } },
+            entity: { label: 'Сутність', selector: { entity: {} } },
+            value_template: {
+              label: 'Шаблон значення (JS)',
+              selector: { text: { multiline: true } },
+            },
+            unit: { label: 'Розмірність', selector: { text: {} } },
+            graph_entity: {
+              label: 'Сутність для графіка в модалці',
+              selector: { entity: {} },
+            },
+          },
+        },
+      },
+    },
+  ],
+  computeLabel(schema) {
+    const n = schema.name;
+    if (n && DISK_INFO_LABELS[n]) return DISK_INFO_LABELS[n];
+    return n || '';
+  },
+  computeHelper(schema) {
+    const n = schema.name;
+    return (n && DISK_INFO_HELPERS[n]) || '';
+  },
+};
+
 class HaDiskInfoCard extends HTMLElement {
   constructor() {
     super();
@@ -150,8 +312,9 @@ class HaDiskInfoCard extends HTMLElement {
     };
   }
 
-  static getConfigElement() {
-    return document.createElement('ha-disk-info-card-editor');
+  /** Редактор через вбудований hui-form-editor (як у стандартних картках HA). */
+  static getConfigForm() {
+    return DISK_INFO_CONFIG_FORM;
   }
 
   setConfig(config) {
@@ -164,6 +327,16 @@ class HaDiskInfoCard extends HTMLElement {
         merged.percent_entity || DEFAULT_ENTITY.percent,
         merged.total_entity ?? DEFAULT_ENTITY.total
       );
+    } else {
+      merged.metrics = merged.metrics.map((m, i) => ({
+        id: m?.id ? String(m.id) : `m_${i}`,
+        title: m?.title ?? '',
+        icon: m?.icon ?? 'mdi:information-outline',
+        entity: m?.entity ?? '',
+        value_template: m?.value_template ?? '',
+        unit: m?.unit ?? '',
+        graph_entity: m?.graph_entity ?? '',
+      }));
     }
     this._config = merged;
     this._buildDom();
@@ -629,401 +802,6 @@ class HaDiskInfoCard extends HTMLElement {
   }
 }
 
-// ------------------------- Editor -------------------------
-class HaDiskInfoCardEditor extends HTMLElement {
-  constructor() {
-    super();
-    this._hass = null;
-    this._config = null;
-    /** Щоб не перезаписати metrics порожнім масивом до першого _renderMetricEditors */
-    this._metricsEditorRendered = false;
-    /** DOM збираємо в connectedCallback: Lovelace може викликати setConfig до підключення. */
-    this._domReady = false;
-    this._els = null;
-  }
-
-  connectedCallback() {
-    if (this._domReady) return;
-    this._buildEditorDom();
-    this._domReady = true;
-    if (!this._config) {
-      this.setConfig({});
-    } else {
-      this._syncFormFromConfig();
-    }
-    if (this._hass) {
-      this.querySelectorAll('ha-entity-picker').forEach((el) => {
-        el.hass = this._hass;
-      });
-      if (customElements.get('ha-icon-picker')) {
-        this.querySelectorAll('ha-icon-picker').forEach((el) => {
-          el.hass = this._hass;
-        });
-      }
-    }
-  }
-
-  /**
-   * Light DOM (без Shadow Root): ha-entity-picker у Shadow DOM у Lovelace часто не рендериться.
-   */
-  _buildEditorDom() {
-    this.innerHTML = `
-      <div class="ha-disk-info-card-editor-root">
-      <style>
-        .ha-disk-info-card-editor-root { display: block; padding: 8px; max-width: 100%; box-sizing: border-box; }
-        .ha-disk-info-card-editor-root .section { margin-bottom: 16px; padding: 12px; border: 1px solid var(--divider-color); border-radius: 12px; }
-        .ha-disk-info-card-editor-root .sectionTitle { font-weight: 600; margin-bottom: 10px; }
-        .ha-disk-info-card-editor-root .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .ha-disk-info-card-editor-root .hint { font-size: 12px; opacity: 0.75; }
-        .ha-disk-info-card-editor-root select {
-          width: 100%; padding: 10px; border-radius: 12px;
-          border: 1px solid var(--divider-color);
-          background: var(--card-background-color); color: var(--primary-text-color);
-          font: inherit; box-sizing: border-box;
-        }
-        .ha-disk-info-card-editor-root .btn {
-          border: 1px solid var(--divider-color); border-radius: 10px;
-          background: var(--card-background-color); color: var(--primary-text-color);
-          padding: 8px 10px; cursor: pointer; width: 100%;
-        }
-        .ha-disk-info-card-editor-root .metricRow { border: 1px dashed var(--divider-color); border-radius: 10px; padding: 10px; display: grid; gap: 8px; }
-        .ha-disk-info-card-editor-root ha-textfield,
-        .ha-disk-info-card-editor-root ha-entity-picker,
-        .ha-disk-info-card-editor-root ha-icon-picker {
-          width: 100%; display: block; min-height: 56px; box-sizing: border-box;
-        }
-      </style>
-
-      <div class="section">
-        <div class="sectionTitle">1. Заголовок</div>
-        <ha-textfield id="hdice-title" label="Текст"></ha-textfield>
-      </div>
-
-      <div class="section">
-        <div class="sectionTitle">2. Вертикальний бар</div>
-        <div class="hint">Сутність відсотка зайнятого місця (0–100). За замовчуванням: sensor.disk_used_space_percent</div>
-        <ha-entity-picker id="hdice-percent" label="Сутність %"></ha-entity-picker>
-        <ha-textfield id="hdice-barWidth" label="Ширина (px)" type="number"></ha-textfield>
-        <div class="grid2">
-          <ha-textfield id="hdice-zoneGreen" label="Поріг зеленої зони (≤)" type="number"></ha-textfield>
-          <ha-textfield id="hdice-zoneYellow" label="Поріг жовтої зони (≤)" type="number"></ha-textfield>
-        </div>
-        <div class="grid2">
-          <ha-textfield id="hdice-greenCol" label="Колір зеленої"></ha-textfield>
-          <ha-textfield id="hdice-yellowCol" label="Колір жовтої"></ha-textfield>
-        </div>
-        <ha-textfield id="hdice-redCol" label="Колір червоної"></ha-textfield>
-      </div>
-
-      <div class="section">
-        <div class="sectionTitle">3. Температура та графік</div>
-        <div class="hint">Сутність температури. За замовчуванням: sensor.disk_temperature</div>
-        <ha-entity-picker id="hdice-temperature" label="Сутність температури"></ha-entity-picker>
-        <div class="grid2">
-          <div>
-            <div class="hint" style="margin-bottom:6px;">Товщина цифри температури</div>
-            <select id="hdice-tempThick">
-              <option value="thin">Тонкий</option>
-              <option value="normal">Звичайний</option>
-              <option value="thick">Товстий</option>
-            </select>
-          </div>
-          <ha-textfield id="hdice-tempFont" label="Розмір шрифту показника (px)" type="number"></ha-textfield>
-        </div>
-        <div class="grid2">
-          <ha-textfield id="hdice-hours" label="Годин для показу" type="number"></ha-textfield>
-          <ha-textfield id="hdice-pph" label="Точок на годину" type="number"></ha-textfield>
-        </div>
-        <ha-textfield id="hdice-graphH" label="Висота графіка (px)" type="number"></ha-textfield>
-        <div class="grid2">
-          <div>
-            <div class="hint" style="margin-bottom:6px;">Тип графіка</div>
-            <select id="hdice-graphType">
-              <option value="bar">Стовпчики</option>
-              <option value="line">Лінія</option>
-            </select>
-          </div>
-          <div>
-            <div class="hint" style="margin-bottom:6px;">Показувати min/max</div>
-            <select id="hdice-extrema">
-              <option value="true">Так</option>
-              <option value="false">Ні</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="sectionTitle">4. Характеристики</div>
-        <div class="hint">Клік відкриває модалку з графіком обраної сутності (поле «Графік (сутність)» або основна сутність).</div>
-        <div id="hdice-metrics"></div>
-        <button class="btn" type="button" id="hdice-add-metric">+ Додати характеристику</button>
-      </div>
-      </div>
-    `;
-
-    this._els = {
-      title: this.querySelector('#hdice-title'),
-      percentEntity: this.querySelector('#hdice-percent'),
-      barWidthPx: this.querySelector('#hdice-barWidth'),
-      zoneGreenTo: this.querySelector('#hdice-zoneGreen'),
-      zoneYellowTo: this.querySelector('#hdice-zoneYellow'),
-      zoneGreenColor: this.querySelector('#hdice-greenCol'),
-      zoneYellowColor: this.querySelector('#hdice-yellowCol'),
-      zoneRedColor: this.querySelector('#hdice-redCol'),
-      temperatureEntity: this.querySelector('#hdice-temperature'),
-      temperatureThickness: this.querySelector('#hdice-tempThick'),
-      temperatureFontSize: this.querySelector('#hdice-tempFont'),
-      hoursToShow: this.querySelector('#hdice-hours'),
-      pointsPerHour: this.querySelector('#hdice-pph'),
-      graphHeight: this.querySelector('#hdice-graphH'),
-      temperatureGraphType: this.querySelector('#hdice-graphType'),
-      showExtrema: this.querySelector('#hdice-extrema'),
-      metricsList: this.querySelector('#hdice-metrics'),
-      addMetric: this.querySelector('#hdice-add-metric'),
-    };
-
-    const emit = () => this._emitConfig();
-
-    const bindText = (el, key) => {
-      const h = (ev) => {
-        const v = ev.detail?.value ?? ev.target?.value;
-        this._config = { ...this._config, [key]: v };
-        emit();
-      };
-      el.addEventListener('value-changed', h);
-      el.addEventListener('change', h);
-    };
-
-    bindText(this._els.title, 'title');
-    bindText(this._els.percentEntity, 'percent_entity');
-    bindText(this._els.temperatureEntity, 'temperature_entity');
-
-    const bindNum = (el, key) => {
-      const h = (ev) => {
-        const v = ev.detail?.value ?? ev.target?.value;
-        const n = v === '' ? null : Number(v);
-        this._config = { ...this._config, [key]: Number.isFinite(n) ? n : v };
-        emit();
-      };
-      el.addEventListener('value-changed', h);
-      el.addEventListener('change', h);
-    };
-
-    bindNum(this._els.barWidthPx, 'barWidthPx');
-    bindNum(this._els.zoneGreenTo, 'zoneGreenTo');
-    bindNum(this._els.zoneYellowTo, 'zoneYellowTo');
-    bindNum(this._els.temperatureFontSize, 'temperatureFontSize');
-    bindNum(this._els.hoursToShow, 'hoursToShow');
-    bindNum(this._els.pointsPerHour, 'pointsPerHour');
-    bindNum(this._els.graphHeight, 'graphHeight');
-
-    bindText(this._els.zoneGreenColor, 'zoneGreenColor');
-    bindText(this._els.zoneYellowColor, 'zoneYellowColor');
-    bindText(this._els.zoneRedColor, 'zoneRedColor');
-
-    this._els.temperatureThickness.addEventListener('change', () => {
-      this._config = { ...this._config, temperatureThickness: this._els.temperatureThickness.value };
-      emit();
-    });
-
-    this._els.temperatureGraphType.addEventListener('change', () => {
-      this._config = { ...this._config, temperatureGraphType: this._els.temperatureGraphType.value };
-      emit();
-    });
-
-    this._els.showExtrema.addEventListener('change', () => {
-      this._config = { ...this._config, showExtrema: this._els.showExtrema.value === 'true' };
-      emit();
-    });
-
-    this._els.addMetric.addEventListener('click', () => {
-      const metrics = [...(this._config.metrics ?? [])];
-      metrics.push({
-        id: `m_${Date.now()}`,
-        title: 'Нова',
-        icon: 'mdi:information',
-        entity: '',
-        value_template: '',
-        unit: '',
-        graph_entity: '',
-      });
-      this._config = { ...this._config, metrics };
-      this._renderMetricEditors();
-      emit();
-    });
-  }
-
-  _syncFormFromConfig() {
-    if (!this._els || !this._config) return;
-    const c = this._config;
-    this._metricsEditorRendered = false;
-    this._els.title.value = c.title ?? '';
-    this._els.percentEntity.value = c.percent_entity ?? '';
-    this._els.temperatureEntity.value = c.temperature_entity ?? '';
-    this._els.barWidthPx.value = String(c.barWidthPx ?? DEFAULTS.barWidthPx);
-    this._els.zoneGreenTo.value = String(c.zoneGreenTo ?? DEFAULTS.zoneGreenTo);
-    this._els.zoneYellowTo.value = String(c.zoneYellowTo ?? DEFAULTS.zoneYellowTo);
-    this._els.zoneGreenColor.value = c.zoneGreenColor ?? '';
-    this._els.zoneYellowColor.value = c.zoneYellowColor ?? '';
-    this._els.zoneRedColor.value = c.zoneRedColor ?? '';
-
-    this._els.temperatureThickness.value = c.temperatureThickness ?? 'thin';
-    this._els.temperatureFontSize.value = String(c.temperatureFontSize ?? 65);
-    this._els.hoursToShow.value = String(c.hoursToShow ?? 48);
-    this._els.pointsPerHour.value = String(c.pointsPerHour ?? 3);
-    this._els.graphHeight.value = String(c.graphHeight ?? 60);
-    this._els.temperatureGraphType.value = c.temperatureGraphType ?? 'bar';
-    this._els.showExtrema.value = c.showExtrema !== false ? 'true' : 'false';
-
-    if (this._hass) {
-      this._els.percentEntity.hass = this._hass;
-      this._els.temperatureEntity.hass = this._hass;
-    }
-
-    this._renderMetricEditors();
-  }
-
-  _readMetricsFromDom() {
-    const root = this._els?.metricsList;
-    if (!root) return this._config?.metrics ?? [];
-    if (!this._metricsEditorRendered) return this._config?.metrics ?? [];
-    return Array.from(root.querySelectorAll('.metricRow')).map((row, idx) => {
-      const id = row.getAttribute('data-id') || `m_${idx}`;
-      const title = row.querySelector('[data-f="title"]')?.value ?? '';
-      const iconEl = row.querySelector('[data-f="icon"]');
-      const icon =
-        iconEl?.value ??
-        row.querySelector('ha-icon-picker')?.value ??
-        row.querySelector('[data-f="icon"]')?.getAttribute?.('value') ??
-        'mdi:information';
-      return {
-        id,
-        title,
-        icon: (icon ?? '').toString(),
-        entity: row.querySelector('[data-f="entity"]')?.value ?? '',
-        value_template: row.querySelector('[data-f="tpl"]')?.value ?? '',
-        unit: row.querySelector('[data-f="unit"]')?.value ?? '',
-        graph_entity: row.querySelector('[data-f="graph"]')?.value ?? '',
-      };
-    });
-  }
-
-  _renderMetricEditors() {
-    const root = this._els?.metricsList;
-    if (!root) return;
-    const metrics = this._config.metrics ?? [];
-    const hasIconPicker = !!customElements.get('ha-icon-picker');
-
-    root.innerHTML = metrics
-      .map(
-        (m) => `
-      <div class="metricRow" data-id="${escapeHtml(m.id)}">
-        <div class="grid2">
-          <ha-textfield data-f="title" label="Заголовок" value="${escapeHtml(m.title ?? '')}"></ha-textfield>
-          ${
-            hasIconPicker
-              ? `<ha-icon-picker data-f="icon" value="${escapeHtml(m.icon ?? '')}"></ha-icon-picker>`
-              : `<ha-textfield data-f="icon" label="Іконка (mdi:...)" value="${escapeHtml(
-                  m.icon ?? ''
-                )}"></ha-textfield>`
-          }
-        </div>
-        <ha-entity-picker data-f="entity" label="Сутність (якщо без шаблону)" value="${escapeHtml(
-          m.entity ?? ''
-        )}"></ha-entity-picker>
-        <ha-textfield data-f="tpl" label="Шаблон значення (JS, опційно)" value="${escapeHtml(
-          m.value_template ?? ''
-        )}"></ha-textfield>
-        <div class="grid2">
-          <ha-textfield data-f="unit" label="Розмірність (опційно)" value="${escapeHtml(
-            m.unit ?? ''
-          )}"></ha-textfield>
-          <ha-entity-picker data-f="graph" label="Графік у модалці (сутність)" value="${escapeHtml(
-            m.graph_entity ?? ''
-          )}"></ha-entity-picker>
-        </div>
-        <button class="btn" type="button" data-del>Видалити</button>
-      </div>
-    `
-      )
-      .join('');
-
-    root.querySelectorAll('ha-entity-picker').forEach((el) => {
-      el.hass = this._hass;
-    });
-
-    const onAny = () => {
-      this._config = { ...this._config, metrics: this._readMetricsFromDom() };
-      this._emitConfig();
-    };
-
-    root.querySelectorAll('ha-textfield, ha-entity-picker, ha-icon-picker').forEach((el) => {
-      el.addEventListener('value-changed', onAny);
-      el.addEventListener('change', onAny);
-    });
-
-    root.querySelectorAll('[data-del]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const row = btn.closest('.metricRow');
-        const id = row?.getAttribute('data-id');
-        this._config = {
-          ...this._config,
-          metrics: (this._config.metrics ?? []).filter((m) => m.id !== id),
-        };
-        this._renderMetricEditors();
-        this._emitConfig();
-      });
-    });
-
-    this._metricsEditorRendered = true;
-  }
-
-  set hass(hass) {
-    this._hass = hass;
-    if (!this._domReady) return;
-    this.querySelectorAll('ha-entity-picker').forEach((el) => {
-      el.hass = hass;
-    });
-    if (customElements.get('ha-icon-picker')) {
-      this.querySelectorAll('ha-icon-picker').forEach((el) => {
-        el.hass = hass;
-      });
-    }
-  }
-
-  setConfig(config) {
-    const merged = {
-      ...structuredClone(DEFAULTS),
-      ...config,
-    };
-    if (!Array.isArray(merged.metrics) || merged.metrics.length === 0) {
-      merged.metrics = getDefaultMetrics(
-        merged.percent_entity || DEFAULT_ENTITY.percent,
-        merged.total_entity ?? DEFAULT_ENTITY.total
-      );
-    }
-    this._config = merged;
-    if (!this._domReady) return;
-    this._syncFormFromConfig();
-  }
-
-  _emitConfig() {
-    if (!this._config || !this._domReady) return;
-    const metrics = this._readMetricsFromDom();
-    const next = { ...this._config, metrics };
-    this._config = next;
-    this.dispatchEvent(
-      new CustomEvent('config-changed', {
-        detail: { config: next },
-        bubbles: true,
-        composed: true,
-      })
-    );
-  }
-}
-
-customElements.define('ha-disk-info-card-editor', HaDiskInfoCardEditor);
 customElements.define('ha-disk-info', HaDiskInfoCard);
 
 window.customCards = window.customCards || [];
