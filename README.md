@@ -1,0 +1,94 @@
+# HA Disk Info Card
+
+Універсальна кастомна Lovelace-картка для відображення інформації про диск:
+
+- вертикальна смуга заповнення (used %)
+- temperature графік (через `custom:mini-graph-card`, якщо доступний)
+- SMART статус
+- напрацювання (uptime в годинах з форматуванням років/днів/годин)
+- клік по 3 показниках під графіком перемикає графік на відповідну сутність
+
+## Вимоги
+
+Картка намагається використовувати `custom:mini-graph-card` для графіка температури. Якщо `mini-graph-card` недоступний, картка все одно відобразиться (бар + SMART + напрацювання), але графік може не показуватись.
+
+## Встановлення (HACS)
+
+Якщо ви встановлюєте через HACS, достатньо завантажити репозиторій і переконатися, що в корені є `hacs.json`.
+
+## Конфігурація
+
+Початковий формат:
+
+```yaml
+type: custom:ha-disk-info
+title: "Системний диск (nvme0)"
+subtitle: "NVMe"
+
+percent_entity: sensor.home_server_disk
+total_entity: sensor.home_server_disk_total
+
+temperature_entity: sensor.home_server_built_in_nvme0_temperature
+smart_entity: sensor.home_server_built_in_nvme0_smart_test_result
+uptime_hours_entity: sensor.home_server_built_in_nvme0_power_on_hours
+
+# додатково (опційно)
+totalUnit: "GB"
+graphHeight: 60
+graphFontSize: 60
+hoursToShow: 24
+pointsPerHour: 4
+barWidthPx: 44
+barMinHeightPx: 180
+```
+
+### Як обчислюються значення
+
+- `percent_entity` — це **used %** (0..100). Для заповнення смуги і для обчислення тексту `used / total`.
+- `total_entity` — загальна ємність в одиницях `totalUnit` (наприклад, GB).
+- `uptime_hours_entity` — напрацювання в **годинах**.
+- `smart_entity` — рядковий результат SMART (наприклад `Passed`, `Failed`).
+
+### SMART: passed/failed
+
+За замовчуванням використовується список `smartPassStrings`: `["passed", "pass", "ok"]`.
+Клік по SMART викликає відображення історії цієї сутності; для нечісливих станів можна задати `smartStateMap`.
+
+Приклад:
+
+```yaml
+smartPassStrings: ["passed"]
+smartStateMap:
+  - value: "passed"
+    label: "Passed"
+  - value: "failed"
+    label: "Failed"
+```
+
+## Події (кліки)
+
+За замовчуванням:
+
+- клік по `Зайнято / всього` перемикає графік на `percent_entity` (якщо доступний `mini-graph-card`)
+- клік по `SMART` перемикає графік на `smart_entity`
+- клік по `Напрацювання` перемикає графік на `uptime_hours_entity`
+
+Також, якщо `openHistoryOnClick: true`, клік відкриває сторінку history для відповідної сутності.
+
+## Параметри (коротко)
+
+Нижче найбільш корисні (є і інші, але це базові):
+
+- `title`, `subtitle`
+- `percent_entity`, `total_entity`
+- `temperature_entity`
+- `smart_entity`
+- `uptime_hours_entity`
+- `graphHeight`, `graphFontSize`
+- `hoursToShow`, `pointsPerHour`
+- `barWidthPx`, `barMinHeightPx`
+- `totalUnit`
+- `smartPassStrings`, `smartStateMap`
+- `openHistoryOnClick` (default `true`)
+- `historyPath` (default `/history`)
+
