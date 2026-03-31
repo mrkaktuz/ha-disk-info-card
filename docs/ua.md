@@ -9,15 +9,24 @@
 - Home Assistant 2024.1+
 - `custom:mini-graph-card`
 
+## Встановлення (HACS)
+
+1. Додайте репозиторій `https://github.com/mrkaktuz/ha-disk-info-card` як `Dashboard`.
+2. Встановіть `Disk Info Card`.
+3. Оновіть кеш браузера.
+4. Додайте картку `custom:ha-disk-info`.
+
 ## Налаштування в UI
 
 Блоки:
+
 - Заголовок
 - Вертикальний бар
 - Температура та графік
 - Характеристики
 
 Для кожної характеристики обов'язкові:
+
 - `title`
 - `icon`
 - хоча б одне з: `entity` або `value_template`
@@ -25,6 +34,7 @@
 ## `value_template` (JS вираз)
 
 Доступні:
+
 - `num('sensor.x')`
 - `state('sensor.x')`
 - `clamp(x, min, max)`

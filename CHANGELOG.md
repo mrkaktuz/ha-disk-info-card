@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.0] - 2026-03-31
+
+- Centered language links and card preview image in `README.md`.
+- Added translated `Installation (HACS)` section to `docs/en.md`.
+- Added card preview image to `docs/images/card-preview.png`.
+- Bumped HACS version to `1.0.0`.
+
 ## [0.7.7] - 2026-03-31
 
 - Set mini-graph `font_size` scale to `100` (default scale) for readable extrema labels.

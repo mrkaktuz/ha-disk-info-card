@@ -9,6 +9,13 @@ Custom Lovelace disk card with a vertical usage bar (%), temperature value + cha
 - Home Assistant 2024.1+
 - `custom:mini-graph-card`
 
+## Installation (HACS)
+
+1. Add repository `https://github.com/mrkaktuz/ha-disk-info-card` as `Dashboard`.
+2. Install `Disk Info Card`.
+3. Refresh browser cache.
+4. Add card `custom:ha-disk-info`.
+
 ## UI Configuration
 
 Sections:
