@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.2] - 2026-03-31
+
+- Updated `docs/images/card-preview.png` with the final corrected preview image.
+- Bumped HACS version to `1.0.2`.
+
 ## [1.0.1] - 2026-03-31
 
 - Fixed README rendering by replacing Markdown-in-HTML blocks with pure HTML links/image for centered layout on GitHub.
