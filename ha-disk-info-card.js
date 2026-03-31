@@ -119,7 +119,7 @@ function thicknessToVisual(th) {
   return { fontWeight: w, stroke, shadow };
 }
 
-const MINI_GRAPH_FONT_PX = 14;
+const MINI_GRAPH_FONT_SCALE = 100;
 
 function formatUptimeHours(totalHours) {
   if (totalHours == null || totalHours === '') return '';
@@ -619,7 +619,7 @@ class HaDiskInfoCard extends HTMLElement {
       points_per_hour: cfg.pointsPerHour,
       hour24: cfg.hour24,
       height: cfg.graphHeight + (cfg.showExtrema ? 24 : 0),
-      font_size: MINI_GRAPH_FONT_PX,
+      font_size: MINI_GRAPH_FONT_SCALE,
       line_color: cfg.graphLineColor,
       group: false,
       show: {

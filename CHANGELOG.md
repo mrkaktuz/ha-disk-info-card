@@ -2,15 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.7.7] - 2026-03-31
+
+- Set mini-graph `font_size` scale to `100` (default scale) for readable extrema labels.
+- Renamed internal constant from `MINI_GRAPH_FONT_PX` to `MINI_GRAPH_FONT_SCALE` for correct units semantics.
+- Cleaned up duplicated content in `README.md` and kept it compact with links to `docs/ua.md` and `docs/en.md`.
+
+## [0.7.6] - 2026-03-31
+
+- Increased mini-graph label font size used for extrema (`min/max`) from `11` to `14` for better readability.
+
 ## [0.7.5] - 2026-03-31
 
 - Fixed mini-graph extrema values (`min/max`) not rendering by disabling grouped mode for temperature chart.
 - Simplified root `README.md` and added direct language links at the top (UA/EN).
 - Moved full documentation into `docs/ua.md` and `docs/en.md`, linked from README.
-
-## [0.7.6] - 2026-03-31
-
-- Increased mini-graph label font size used for extrema (`min/max`) from `11` to `14` for better readability.
 
 ## [0.7.4] - 2026-03-31
 

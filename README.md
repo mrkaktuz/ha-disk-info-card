@@ -9,6 +9,33 @@
 
 <!-- ![Card preview](images/card-preview.png) -->
 
+Скріншот картки додайте в: `images/card-preview.png`
+
+## Швидко
+
+- Тип картки: `custom:ha-disk-info`
+- Залежність: `custom:mini-graph-card`
+- Документація:
+  - [UA](docs/ua.md)
+  - [EN](docs/en.md)
+
+## Встановлення (HACS)
+
+1. Додайте репозиторій як `Lovelace`.
+2. Встановіть `HA Disk Info Card`.
+3. Оновіть кеш браузера.
+4. Додайте картку `custom:ha-disk-info`.
+# HA Disk Info Card
+
+![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)
+![Release](https://img.shields.io/github/v/release/mrkaktuz/ha-disk-info-card)
+![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)
+[![Stars](https://img.shields.io/github/stars/mrkaktuz/ha-disk-info-card?style=social)](https://github.com/mrkaktuz/ha-disk-info-card)
+
+[UA документація](docs/ua.md) | [EN documentation](docs/en.md)
+
+<!-- ![Card preview](images/card-preview.png) -->
+
 Куди додати скріншот картки: `images/card-preview.png`
 
 ## Швидко
