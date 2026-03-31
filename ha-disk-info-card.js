@@ -13,7 +13,6 @@ const DEFAULTS = {
 
   percent_entity: DEFAULT_ENTITY.percent,
   temperature_entity: DEFAULT_ENTITY.temperature,
-  /** Для відновлення дефолтних метрик і шаблону «Зайнято» */
   total_entity: DEFAULT_ENTITY.total,
 
   barWidthPx: 55,
@@ -25,9 +24,7 @@ const DEFAULTS = {
   zoneYellowColor: '#f39c12',
   zoneRedColor: '#c0392b',
 
-  /** thin | normal | thick */
   temperatureThickness: 'thin',
-  /** Розмір лише великого показника температури у шапці картки (px) */
   temperatureFontSize: 65,
 
   hoursToShow: 48,
@@ -40,7 +37,6 @@ const DEFAULTS = {
   graphLineColor: '#e67e22',
 };
 
-/** Дефолтні характеристики (редагуються / видаляються в UI). */
 function getDefaultMetrics(percentEntity, totalEntity) {
   return [
     {
@@ -85,7 +81,6 @@ function clamp(n, min, max) {
   return Math.min(max, Math.max(min, n));
 }
 
-/** Спроба знайти сутність за суфіксом / ключовими словами. */
 function autoResolveEntity(hass, preferred, patterns) {
   if (preferred && hass?.states?.[preferred]) return preferred;
   const ids = Object.keys(hass?.states ?? {});
@@ -124,7 +119,6 @@ function thicknessToVisual(th) {
   return { fontWeight: w, stroke, shadow };
 }
 
-/** Шрифт підписів mini-graph-card (min/max, вісі) — не залежить від temperatureFontSize. */
 const MINI_GRAPH_FONT_PX = 11;
 
 function formatUptimeHours(totalHours) {
@@ -143,7 +137,6 @@ function formatUptimeHours(totalHours) {
   return parts.join(' ');
 }
 
-/** Підписи полів візуального редактора (getConfigForm / hui-form-editor). */
 const DISK_INFO_LABELS = {
   title: 'Заголовок картки',
   percent_entity: 'Сутність % зайнятого (0–100)',
@@ -205,7 +198,7 @@ const DISK_INFO_CONFIG_FORM = {
       type: 'expandable',
       name: 'disksec_temp',
       flatten: true,
-      title: 'Температура (показник)',
+      title: 'Температура та графік',
       schema: [
         { name: 'temperature_entity', required: true, selector: { entity: {} } },
         {
@@ -221,14 +214,6 @@ const DISK_INFO_CONFIG_FORM = {
           name: 'temperatureFontSize',
           selector: { number: { min: 12, max: 120, mode: 'box' } },
         },
-      ],
-    },
-    {
-      type: 'expandable',
-      name: 'disksec_graph',
-      flatten: true,
-      title: 'Графік температури',
-      schema: [
         {
           type: 'grid',
           name: '',
@@ -323,7 +308,6 @@ class HaDiskInfoCard extends HTMLElement {
     this._activeValueTextEl = null;
     this._activeValueUnitEl = null;
     this._activeValueBtnEl = null;
-    /** Очікує hui-card (grid / panel) — без цього у новіших HA можливі помилки layout */
     this._layout = undefined;
     this._preview = false;
     this.attachShadow({ mode: 'open' });
@@ -345,7 +329,6 @@ class HaDiskInfoCard extends HTMLElement {
     this._preview = !!v;
   }
 
-  /** Grid-секції Lovelace викликають через hui-card; без методу — нестабільне прев’ю. */
   getGridOptions() {
     return {
       columns: 12,
@@ -364,7 +347,6 @@ class HaDiskInfoCard extends HTMLElement {
     };
   }
 
-  /** Редактор через вбудований hui-form-editor (як у стандартних картках HA). */
   static getConfigForm() {
     return DISK_INFO_CONFIG_FORM;
   }
@@ -649,7 +631,7 @@ class HaDiskInfoCard extends HTMLElement {
         icon: false,
         name: false,
         state: false,
-        labels: false,
+        labels: !!cfg.showExtrema,
       },
     };
     this._graphEl.setConfig(graphConfig);
