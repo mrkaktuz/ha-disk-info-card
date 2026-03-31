@@ -1,6 +1,6 @@
 {
   "name": "Disk Info Card",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "render_readme": true,
   "filename": "ha-disk-info-card.js",
   "content_in_root": true

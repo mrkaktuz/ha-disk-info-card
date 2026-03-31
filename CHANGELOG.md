@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.7.5] - 2026-03-31
+
+- Fixed mini-graph extrema values (`min/max`) not rendering by disabling grouped mode for temperature chart.
+- Simplified root `README.md` and added direct language links at the top (UA/EN).
+- Moved full documentation into `docs/ua.md` and `docs/en.md`, linked from README.
+
 ## [0.7.4] - 2026-03-31
 
 - Merged UI editor blocks `Температура (показник)` and `Графік температури` into a single section `Температура та графік`.

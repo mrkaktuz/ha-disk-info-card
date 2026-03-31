@@ -621,7 +621,7 @@ class HaDiskInfoCard extends HTMLElement {
       height: cfg.graphHeight + (cfg.showExtrema ? 24 : 0),
       font_size: MINI_GRAPH_FONT_PX,
       line_color: cfg.graphLineColor,
-      group: true,
+      group: false,
       show: {
         graph: graphType,
         fill: 'fade',
