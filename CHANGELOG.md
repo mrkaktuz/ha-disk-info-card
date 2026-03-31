@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.1] - 2026-03-31
+
+- Fixed README rendering by replacing Markdown-in-HTML blocks with pure HTML links/image for centered layout on GitHub.
+- Bumped HACS version to `1.0.1`.
+
 ## [1.0.0] - 2026-03-31
 
 - Centered language links and card preview image in `README.md`.

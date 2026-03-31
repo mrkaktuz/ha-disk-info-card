@@ -6,9 +6,9 @@
 [![Stars](https://img.shields.io/github/stars/mrkaktuz/ha-disk-info-card?style=social)](https://github.com/mrkaktuz/ha-disk-info-card)
 
 <p align="center">
-[UA документація](docs/ua.md) | [EN documentation](docs/en.md)
+  <a href="docs/ua.md">UA документація</a> | <a href="docs/en.md">EN documentation</a>
 </p>
 
 <p align="center">
-![Card preview](docs/images/card-preview.png)
+  <img src="docs/images/card-preview.png" alt="Card preview" />
 </p>
