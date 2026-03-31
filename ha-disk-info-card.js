@@ -119,7 +119,7 @@ function thicknessToVisual(th) {
   return { fontWeight: w, stroke, shadow };
 }
 
-const MINI_GRAPH_FONT_PX = 11;
+const MINI_GRAPH_FONT_PX = 14;
 
 function formatUptimeHours(totalHours) {
   if (totalHours == null || totalHours === '') return '';

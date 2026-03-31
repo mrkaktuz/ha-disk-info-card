@@ -8,6 +8,10 @@ All notable changes to this project are documented in this file.
 - Simplified root `README.md` and added direct language links at the top (UA/EN).
 - Moved full documentation into `docs/ua.md` and `docs/en.md`, linked from README.
 
+## [0.7.6] - 2026-03-31
+
+- Increased mini-graph label font size used for extrema (`min/max`) from `11` to `14` for better readability.
+
 ## [0.7.4] - 2026-03-31
 
 - Merged UI editor blocks `Температура (показник)` and `Графік температури` into a single section `Температура та графік`.
